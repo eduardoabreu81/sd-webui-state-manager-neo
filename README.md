@@ -15,7 +15,7 @@ State Manager Neo lets you save and restore full `txt2img` and `img2img` UI stat
 
 If you frequently switch models, samplers, scripts, and generation settings, this extension gives you repeatable state management with reusable configs, history browsing, and fast apply flows.
 
-<img width="270" alt="preview-modal" src="https://github.com/user-attachments/assets/eabca34a-0229-46ca-b544-ee9efe88d3b9" /> <img width="270" alt="preview-small" src="https://github.com/user-attachments/assets/e37a78f9-8517-4097-834f-731049236871" /> <img width="270" alt="preview-quick" src="https://github.com/user-attachments/assets/eff429c2-ec3e-4590-ba2e-6eb6d23cff45" />
+
 
 ## Compatibility
 
