@@ -10,6 +10,33 @@ from typing import Annotated
 import modules.script_callbacks as script_callbacks
 from modules import shared, scripts
 
+from .forge_neo_compat import FORGE_NEO_SELECTORS
+
+
+def is_forge_host() -> bool:
+    try:
+        import modules_forge  # noqa: F401
+        return True
+    except ImportError:
+        pass
+
+    # Fallback: Forge builds usually expose forge_* options in shared.opts.
+    try:
+        opts_data = getattr(shared.opts, "data", {}) or {}
+        if any(str(key).startswith("forge_") for key in opts_data.keys()):
+            return True
+
+        opts_labels = getattr(shared.opts, "data_labels", {}) or {}
+        if any(str(key).startswith("forge_") for key in opts_labels.keys()):
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+IS_FORGE = is_forge_host()
+
 class ContentsDataModel(BaseModel):
     contents: Annotated[str, Body(embed=True)]
 
@@ -63,13 +90,48 @@ def get_quick_settings_names():
     return set()
 
 def state_manager_api(blocks: gr.Blocks, app: FastAPI):
+    component_keys = list(blocks.ui_loadsave.component_mapping.keys())
+    print("[StateManager] Component keys:", component_keys)
+
     @app.get("/statemanager/version")
     async def version():
-        return {"version": "3.0.0"}
+        return {"version": "0.0.1"}
 
     @app.get("/statemanager/componentids")
     async def get_component_ids():
-        return {component_path: blocks.ui_loadsave.component_mapping[component_path]._id for component_path in blocks.ui_loadsave.component_mapping.keys()}
+        component_ids = {
+            component_path: {
+                "id": blocks.ui_loadsave.component_mapping[component_path]._id,
+                "source": "gradio"
+            }
+            for component_path in blocks.ui_loadsave.component_mapping.keys()
+        }
+
+        ui_config_path = path.join(scripts.basedir(), "ui-config.json")
+        try:
+            with open(ui_config_path, 'r', encoding='utf-8') as f:
+                ui_config_contents = json.load(f)
+
+            for setting_path in ui_config_contents.keys():
+                if not setting_path.endswith("/value"):
+                    continue
+                if setting_path not in component_ids:
+                    component_ids[setting_path] = {
+                        "id": None,
+                        "source": "ui-config"
+                    }
+        except Exception as e:
+            print(f"[StateManager] WARNING: Failed to load ui-config fallback keys for /componentids: {e}")
+
+        return component_ids
+
+    @app.get("/statemanager/debug/components")
+    async def get_debug_components():
+        return {"keys": list(blocks.ui_loadsave.component_mapping.keys())}
+    
+    @app.get("/statemanager/forgeneomap")
+    async def get_forge_neo_selectors():
+        return FORGE_NEO_SELECTORS
     
     @app.get("/statemanager/uidefaults")
     async def get_ui_defaults():
@@ -176,20 +238,23 @@ class StateManagerOptionButton(shared.OptionInfo):
         super().__init__(str(text).strip(), label='', component=lambda **lkwargs: statemanager_option_button_component(py_click, js_click, **{**kwargs, **lkwargs}))
         self.do_not_save = True
 
-shared.options_templates.update(
-    shared.options_section(
-        settings_section, {
-            "statemanager_idb2file_overwrite": StateManagerOptionButton('Copy Indexed DB to File (overwrite)', None, "stateManager.syncStorage('idb2file', 'overwrite')", variant="primary"),
-            "statemanager_idb2file_merge": StateManagerOptionButton('Copy Indexed DB to File (merge)', None, "stateManager.syncStorage('idb2file', 'merge')", variant="primary"),
-            "statemanager_file2idb_overwrite": StateManagerOptionButton('Copy File to Indexed DB (overwrite)', None, "stateManager.syncStorage('file2idb', 'overwrite')", variant="primary"),
-            "statemanager_file2idb_merge": StateManagerOptionButton('Copy File to Indexed DB (merge)', None, "stateManager.syncStorage('file2idb', 'merge')", variant="primary"),
-            "statemanager_idb_clear": StateManagerOptionButton('Delete all data from Indexed DB', None, "stateManager.clearData('Browser's Indexed DB')"),
-            "statemanager_file_clear": StateManagerOptionButton('Delete all data from File', None, "stateManager.clearData('File')"),
-        }
+if not IS_FORGE:
+    print("[StateManager] WARNING: This extension requires sd-webui-forge-classic (neo). Skipping registration.")
+else:
+    shared.options_templates.update(
+        shared.options_section(
+            settings_section, {
+                "statemanager_idb2file_overwrite": StateManagerOptionButton('Copy Indexed DB to File (overwrite)', None, "stateManager.syncStorage('idb2file', 'overwrite')", variant="primary"),
+                "statemanager_idb2file_merge": StateManagerOptionButton('Copy Indexed DB to File (merge)', None, "stateManager.syncStorage('idb2file', 'merge')", variant="primary"),
+                "statemanager_file2idb_overwrite": StateManagerOptionButton('Copy File to Indexed DB (overwrite)', None, "stateManager.syncStorage('file2idb', 'overwrite')", variant="primary"),
+                "statemanager_file2idb_merge": StateManagerOptionButton('Copy File to Indexed DB (merge)', None, "stateManager.syncStorage('file2idb', 'merge')", variant="primary"),
+                "statemanager_idb_clear": StateManagerOptionButton('Delete all data from Indexed DB', None, "stateManager.clearData('Browser's Indexed DB')"),
+                "statemanager_file_clear": StateManagerOptionButton('Delete all data from File', None, "stateManager.clearData('File')"),
+            }
+        )
     )
-)
 
-update_storage_file_path()
+    update_storage_file_path()
 
-script_callbacks.on_app_started(state_manager_api)
-script_callbacks.on_ui_settings(on_ui_settings)
+    script_callbacks.on_app_started(state_manager_api)
+    script_callbacks.on_ui_settings(on_ui_settings)

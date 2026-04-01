@@ -2541,7 +2541,7 @@
                 const settingPath = sectionName.endsWith('.py') ? getScriptSettingName(sectionName.substring(0, sectionName.length - 3), settingName) : `${sectionName}/${settingName}`;
                 if (curatedSettingNames.has(settingPath) ||
                     (sm.componentMap.hasOwnProperty(settingPath) && sm.memoryStorage.currentDefault.contents.hasOwnProperty(settingPath) &&
-                        sm.componentMap[settingPath].entries.every(e => sm.utils.areLooselyEqualValue(value, e.component.props.value, sm.memoryStorage.currentDefault.contents[settingPath])))) {
+                        sm.componentMap[settingPath].entries.every(e => sm.utils.areLooselyEqualValue(value, sm.getMappedComponentEntryValue(e), sm.memoryStorage.currentDefault.contents[settingPath])))) {
                     delete mergedComponentSettings[sectionName][settingName];
                 }
             }
@@ -2564,7 +2564,7 @@
                     const mappedComponents = sm.componentMap[settingPathInfo.basePath].entries;
                     for (let i = 0; i < mappedComponents.length; i++) {
                         const finalSettingName = mappedComponents.length == 1 ? settingName : `${settingName} ${i}`;
-                        if (!sm.utils.areLooselyEqualValue(value, mappedComponents[i].component.props.value, sm.memoryStorage.currentDefault.contents[settingPathInfo.basePath])) {
+                        if (!sm.utils.areLooselyEqualValue(value, sm.getMappedComponentEntryValue(mappedComponents[i]), sm.memoryStorage.currentDefault.contents[settingPathInfo.basePath])) {
                             mergedComponentSettings[sectionName][finalSettingName] = value;
                         }
                     }
@@ -2603,7 +2603,7 @@
         for (const setting of settings) {
             const settingPathInfo = sm.utils.getSettingPathInfo(setting.path);
             if (sm.componentMap.hasOwnProperty(settingPathInfo.basePath)) {
-                if (sm.componentMap[settingPathInfo.basePath].entries[settingPathInfo.index].component.props.value != setting.value) {
+                if (sm.getMappedComponentEntryValue(sm.componentMap[settingPathInfo.basePath].entries[settingPathInfo.index]) != setting.value) {
                     element.dataset['valueDiff'] = 'changed';
                     break;
                 }
@@ -2639,11 +2639,7 @@
                 console.warn(`[State Manager] Could not apply component path ${settingPathInfo.basePath}`);
                 continue;
             }
-            componentData.entries[settingPathInfo.index].component.props.value = settings[componentPath];
-            componentData.entries[settingPathInfo.index].component.instance.$set({ value: componentData.entries[settingPathInfo.index].component.props.value });
-            const e = new Event("change", { bubbles: true });
-            Object.defineProperty(e, "target", { value: componentData.entries[settingPathInfo.index].element });
-            componentData.entries[settingPathInfo.index].element.dispatchEvent(e);
+            sm.setMappedComponentEntryValue(componentData.entries[settingPathInfo.index], settings[componentPath]);
         }
     };
     sm.createInspectorSettingsAccordion = function (label, data) {
@@ -2848,6 +2844,133 @@
         sm.memoryStorage.entries.data[stateKey].name = name;
         sm.queueStorageUpdate();
     };
+    sm.getSettingLabelFromPath = function (settingPath) {
+        const settingPathInfo = sm.utils.getSettingPathInfo(`${settingPath ?? ''}`);
+        const pathParts = settingPathInfo.basePath.split('/');
+        return `${pathParts[pathParts.length - 1] ?? ''}`.trim();
+    };
+    sm.findElementBySelectorOrFallback = function (settingPath) {
+        // Priority 1: Check explicit Forge Neo selector map
+        const selector = sm.forgeNeoSelectorMap?.[settingPath];
+        if (selector) {
+            const element = document.querySelector(selector);
+            if (element) {
+                return element;
+            }
+            console.warn(`[State Manager] Forge Neo selector map contains selector for '${settingPath}' but element not found: ${selector}`);
+        }
+
+        // Priority 2: Fallback to ui-config.json DOM query
+        return sm.findUiConfigFallbackInput(settingPath);
+    };
+    sm.findUiConfigFallbackInput = function (settingPath) {
+        const settingPathInfo = sm.utils.getSettingPathInfo(`${settingPath ?? ''}`);
+        const pathParts = settingPathInfo.basePath.split('/');
+        const generationType = `${pathParts[0] ?? ''}`;
+        if (generationType != 'txt2img' && generationType != 'img2img') {
+            return null;
+        }
+        const labelText = sm.getSettingLabelFromPath(settingPathInfo.basePath);
+        if (!labelText) {
+            return null;
+        }
+        const tabContainer = app.getElementById(`tab_${generationType}`) || app.querySelector(`#${generationType}`);
+        if (!tabContainer) {
+            return null;
+        }
+        const targetLabel = labelText.replace(/\s+/g, ' ').trim().replace(/:$/, '').toLowerCase();
+        const labelCandidates = tabContainer.querySelectorAll('label, .block-title, .name, .label');
+        for (const labelNode of labelCandidates) {
+            const candidateText = `${labelNode.textContent ?? ''}`.replace(/\s+/g, ' ').trim().replace(/:$/, '').toLowerCase();
+            if (candidateText != targetLabel) {
+                continue;
+            }
+            const container = labelNode.closest('.gradio-row, .form, .block, .wrap, .gr-box, .gr-panel') || labelNode.parentElement;
+            if (!container) {
+                continue;
+            }
+            const primaryInput = container.querySelector('input[type="number"], textarea, select, input[type="text"], input[type="range"], input[type="checkbox"]');
+            if (primaryInput) {
+                return primaryInput;
+            }
+        }
+        return null;
+    };
+    sm.getMappedComponentEntryValue = function (entry) {
+        if (!entry) {
+            return undefined;
+        }
+        if (entry.source == 'ui-config') {
+            const element = sm.findElementBySelectorOrFallback(entry.path);
+            if (!element) {
+                return undefined;
+            }
+            if (element instanceof HTMLInputElement) {
+                if (element.type == 'checkbox') {
+                    return element.checked;
+                }
+                if (element.type == 'number' || element.type == 'range') {
+                    const value = Number(element.value);
+                    return Number.isNaN(value) ? element.value : value;
+                }
+                return element.value;
+            }
+            if (element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) {
+                return element.value;
+            }
+            return undefined;
+        }
+        return entry.component?.props?.value;
+    };
+    sm.setMappedComponentEntryValue = function (entry, value) {
+        if (!entry) {
+            return;
+        }
+        if (entry.source == 'ui-config') {
+            const element = sm.findElementBySelectorOrFallback(entry.path);
+            if (!element) {
+                console.warn(`[State Manager] Could not find element for ${entry.path} (tried explicit selector and ui-config fallback)`);
+                return;
+            }
+            if (element instanceof HTMLInputElement) {
+                if (element.type == 'checkbox') {
+                    element.checked = Boolean(value);
+                }
+                else {
+                    element.value = `${value ?? ''}`;
+                }
+            }
+            else if (element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) {
+                element.value = `${value ?? ''}`;
+            }
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+            return;
+        }
+        entry.component.props.value = value;
+        entry.component.instance.$set({ value: entry.component.props.value });
+        const e = new Event('change', { bubbles: true });
+        Object.defineProperty(e, 'target', { value: entry.element });
+        entry.element.dispatchEvent(e);
+    };
+
+    sm.fetchForgeNeoSelectors = async function () {
+        return sm.api.get("forgeneomap")
+            .then(response => {
+            if (!sm.utils.isValidResponse(response)) {
+                console.warn("[State Manager] Could not fetch Forge Neo selector map, fallback mechanism will rely on ui-config.json only");
+                sm.forgeNeoSelectorMap = {};
+                return;
+            }
+            sm.forgeNeoSelectorMap = response;
+            console.log("[State Manager] Loaded Forge Neo selector map with", Object.keys(response).length, "entries");
+        })
+            .catch(e => {
+            console.warn("[State Manager] Failed to fetch Forge Neo selector map:", e);
+            sm.forgeNeoSelectorMap = {};
+        });
+    };
+
     sm.buildComponentMap = async function () {
         return sm.api.get("componentids")
             .then(response => {
@@ -2865,17 +2988,34 @@
                     componentsByElemId.set(component.props.elem_id, component);
                 }
             }
-            for (const path in response) { // {path: id}
-                const component = componentsById.get(response[path]);
+            for (const path in response) {
+                const responseData = response[path];
+                const source = (typeof responseData === 'object' && responseData) ? `${responseData.source ?? 'gradio'}` : 'gradio';
+                const componentId = (typeof responseData === 'object' && responseData) ? responseData.id : responseData;
                 const pathParts = path.split('/');
                 if (pathParts[pathParts.length - 1] != 'value') {
                     continue; // Skip other settings like min/max if they sneak in here
                 }
+                const basePath = pathParts.slice(0, pathParts.length - 1).join('/');
+                if (source == 'ui-config') {
+                    if (!sm.componentMap.hasOwnProperty(basePath)) {
+                        sm.componentMap[basePath] = {
+                            entries: [{
+                                    source: 'ui-config',
+                                    path: basePath
+                                }]
+                        };
+                    }
+                    continue;
+                }
+                const component = componentsById.get(componentId);
                 if (!component) {
                     continue;
                 }
                 let data = {
                     entries: [{
+                            source: 'gradio',
+                            path: basePath,
                             component: component,
                             element: app.getElementById(component.props.elem_id || `component-${component.id}`)
                         }]
@@ -2890,12 +3030,14 @@
                             continue;
                         }
                         data.entries.push({
+                            source: 'gradio',
+                            path: basePath,
                             component: unitComponent,
                             element: app.getElementById(unitElemId)
                         });
                     }
                 }
-                sm.componentMap[pathParts.slice(0, pathParts.length - 1).join('/')] = data;
+                sm.componentMap[basePath] = data;
             }
             // Input accordions extend from gr.Checkbox, where an opened accordion = enabled and closed = disabled
             // They also contain a separate checkbox to override this behaviour, called `xxx-visible-checkbox`
@@ -2914,6 +3056,8 @@
                 if (!data) {
                     data = {
                         entries: [{
+                                source: 'gradio',
+                                path: `${accordion.id.split('_')[0]}/${component.label}`,
                                 component: component,
                                 element: checkbox
                             }]
@@ -2939,6 +3083,8 @@
                 }
                 let data = {
                     entries: [{
+                            source: 'gradio',
+                            path: component.props.elem_id.substring(8),
                             component: component,
                             element: app.getElementById(component.props.elem_id)
                         }]
@@ -3232,7 +3378,7 @@
                 const value = savedComponentDefaults[settingPath];
                 const mappedComponents = sm.componentMap[settingPath].entries;
                 for (let i = 0; i < mappedComponents.length; i++) {
-                    if (!sm.utils.areLooselyEqualValue(value, mappedComponents[i].component.props.value)) {
+                    if (!sm.utils.areLooselyEqualValue(value, sm.getMappedComponentEntryValue(mappedComponents[i]))) {
                         mergedComponentSettings[mappedComponents.length == 1 ? settingPath : `${settingPath}/${i}`] = value;
                     }
                 }
@@ -3281,7 +3427,7 @@
             if (reType.test(componentPath)) {
                 for (let i = 0; i < componentData.entries.length; i++) {
                     const finalComponentPath = componentData.entries.length == 1 ? componentPath : `${componentPath}/${i}`;
-                    const currentValue = componentData.entries[i].component.props.value;
+                    const currentValue = sm.getMappedComponentEntryValue(componentData.entries[i]);
                     if (!changedOnly || (sm.memoryStorage.currentDefault.contents[finalComponentPath] != currentValue)) {
                         settings[finalComponentPath] = currentValue;
                     }
@@ -3582,15 +3728,18 @@
             .catch(e => sm.utils.logResponseError("[State Manager] Could not get data from storage", e));
         // Build the component map in parallel; UI can render before this finishes.
         const componentMapPromise = sm.buildComponentMap();
+        const forgeNeoSelectorsPromise = sm.fetchForgeNeoSelectors();
         await Promise.all([versionPromise, storagePromise]);
         sm.injectUI();
         await componentMapPromise;
+        await forgeNeoSelectorsPromise;
         sm.applyStartupConfigIfEnabled?.();
     };
     onUiLoaded(sm.init);
     onAfterUiUpdate(sm.checkHeadImage);
 })(window.stateManager = window.stateManager || {
     componentMap: {},
+    forgeNeoSelectorMap: {},
     activeProfileDraft: null,
     activeProfileSaveButtons: [],
     memoryStorage: {
