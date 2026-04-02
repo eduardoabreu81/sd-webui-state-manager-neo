@@ -30,6 +30,7 @@
     sm.lastUsedState = null;
     sm.quickMenuSelectedStateKey = null;
     sm.hasAppliedStartupConfig = false;
+    sm.forceHistoryVersionLayout = false;
     sm.activePanelTab = 'history';
     sm.uiSettings = {
         historySmallViewEntriesPerPage: entriesPerPage,
@@ -941,6 +942,7 @@
         sm.historyVersionContext = {
             configVersionId: sm.getConfigVersionBaseId(selectedState, selectedStateKey)
         };
+        sm.forceHistoryVersionLayout = false;
         sm.syncHistoryVersionLayoutMode?.();
         if (sm.activePanelTab == 'history' && sm.entryFilter.group == 'history') {
             sm.queueEntriesUpdate?.(0);
@@ -1333,6 +1335,9 @@
         const setActivePanelTab = (tab, group) => {
             const previousTab = sm.activePanelTab;
             sm.activePanelTab = tab;
+            if (tab == 'history' && previousTab == 'favourites') {
+                sm.forceHistoryVersionLayout = true;
+            }
             sm.syncPanelTabButtons?.();
             sm.syncPanelTabVisibility?.();
             updateShowSavedConfigsToggleVisibility();
@@ -1673,10 +1678,15 @@
         const historyVersionEntries = sm.createElementWithClassList('div', 'sd-webui-sm-history-version-entries');
         historyVersionEntries.style.display = 'none';
         sm.syncHistoryVersionLayoutMode = function () {
-            const isHistoryVersionMode = Boolean(sm.isHistoryVersionPreviewMode?.());
+            const isHistoryPanel = sm.activePanelTab == 'history' && sm.entryFilter.group == 'history';
+            const hasVersionContext = `${sm.historyVersionContext?.configVersionId ?? ''}`.trim().length > 0;
+            const isHistoryVersionMode = Boolean(sm.isHistoryVersionPreviewMode?.()) || (isHistoryPanel && Boolean(sm.forceHistoryVersionLayout));
             entryContainer.classList.toggle('sd-webui-sm-history-version-mode', isHistoryVersionMode);
             entries.style.display = isHistoryVersionMode ? 'none' : '';
             historyVersionEntries.style.display = isHistoryVersionMode ? 'flex' : 'none';
+            if (!isHistoryPanel || hasVersionContext) {
+                sm.forceHistoryVersionLayout = false;
+            }
         };
         sm.syncHistoryVersionLayoutMode();
         entryContainer.appendChild(entryHeader);
@@ -2204,6 +2214,15 @@
         window.addEventListener('resize', handleSmallViewModeChange);
         sm.applyLoadedPreferences();
         sm.syncHistoryVersionLayoutMode?.();
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                if (sm.activePanelTab == 'history' && sm.entryFilter.group == 'history') {
+                    sm.syncHistoryVersionContextFromSelection?.();
+                }
+                sm.syncHistoryVersionLayoutMode?.();
+                sm.queueEntriesUpdate?.(0);
+            }, 0);
+        });
         app.addEventListener('input', sm.updateAllValueDiffDatas);
         app.addEventListener('change', sm.updateAllValueDiffDatas);
     };
