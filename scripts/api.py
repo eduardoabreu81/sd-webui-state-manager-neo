@@ -4,13 +4,16 @@ from pydantic import BaseModel
 
 import json
 import hashlib
+import sys
+import os
 from os import path
 from typing import Annotated
 
 import modules.script_callbacks as script_callbacks
 from modules import shared, scripts
 
-from .forge_neo_compat import FORGE_NEO_SELECTORS
+sys.path.insert(0, os.path.dirname(__file__))
+from forge_neo_compat import FORGE_NEO_SELECTORS
 
 
 def is_forge_host() -> bool:
@@ -128,11 +131,11 @@ def state_manager_api(blocks: gr.Blocks, app: FastAPI):
     @app.get("/statemanager/debug/components")
     async def get_debug_components():
         return {"keys": list(blocks.ui_loadsave.component_mapping.keys())}
-    
+
     @app.get("/statemanager/forgeneomap")
     async def get_forge_neo_selectors():
         return FORGE_NEO_SELECTORS
-    
+
     @app.get("/statemanager/uidefaults")
     async def get_ui_defaults():
         filepath = path.join(scripts.basedir(), "ui-config.json")
@@ -177,7 +180,6 @@ def state_manager_api(blocks: gr.Blocks, app: FastAPI):
         
         return {"success": True}
 
-    # def save(contents: Annotated[str, Body()]):
     @app.post("/statemanager/save")
     def save(saveData: ContentsDataModel):
         saveData = bytes(bytearray(map(int, saveData.contents.split(','))))
@@ -210,8 +212,8 @@ def state_manager_api(blocks: gr.Blocks, app: FastAPI):
 def on_ui_settings():
     options = {
         "statemanager_save_explanation": shared.OptionHTML("""
-    State Manager 1.0 used to save entries exclusively to the browser's indexed DB. This means each browser – and each browser
-    profile – has its own, unique history. Choosing 'File' will instead save the history to a file in this extension's root
+    State Manager 1.0 used to save entries exclusively to the browser's indexed DB. This means each browser - and each browser
+    profile - has its own, unique history. Choosing 'File' will instead save the history to a file in this extension's root
     folder, and can be shared across all browsers and profiles.
     """),
         "statemanager_save_location": shared.OptionInfo("Browser's Indexed DB", "Save Location", gr.Radio, {"choices": ["File", "Browser's Indexed DB"]}).needs_reload_ui(),
@@ -248,7 +250,7 @@ else:
                 "statemanager_idb2file_merge": StateManagerOptionButton('Copy Indexed DB to File (merge)', None, "stateManager.syncStorage('idb2file', 'merge')", variant="primary"),
                 "statemanager_file2idb_overwrite": StateManagerOptionButton('Copy File to Indexed DB (overwrite)', None, "stateManager.syncStorage('file2idb', 'overwrite')", variant="primary"),
                 "statemanager_file2idb_merge": StateManagerOptionButton('Copy File to Indexed DB (merge)', None, "stateManager.syncStorage('file2idb', 'merge')", variant="primary"),
-                "statemanager_idb_clear": StateManagerOptionButton('Delete all data from Indexed DB', None, "stateManager.clearData('Browser's Indexed DB')"),
+                "statemanager_idb_clear": StateManagerOptionButton('Delete all data from Indexed DB', None, "stateManager.clearData('Browser\\'s Indexed DB')"),
                 "statemanager_file_clear": StateManagerOptionButton('Delete all data from File', None, "stateManager.clearData('File')"),
             }
         )
