@@ -2458,20 +2458,113 @@ declare let onAfterUiUpdate: (callback) => void;
         let curatedSettingNames = new Set(); // Added manually to Generation accordion e.g.
         // A curated section that displays the core generation params, whether they differ or not
         const generationSettingsContent = sm.createElementWithClassList('div', 'sd-webui-sm-inspector-category-content');
+        function getAlternativeSettingPaths(settingPath) {
+            const alternatives = [settingPath];
+            const rootTypePrefix = `${entry.data.type}/`;
+            const appendUnique = (candidate) => {
+                if (candidate && alternatives.indexOf(candidate) == -1) {
+                    alternatives.push(candidate);
+                }
+            };
+            if (settingPath.startsWith(rootTypePrefix)) {
+                const label = settingPath.substring(rootTypePrefix.length);
+                const labelVariants = {
+                    'Negative prompt': ['Negative Prompt'],
+                    'Negative Prompt': ['Negative prompt'],
+                    'Sampling method': ['Sampling Method'],
+                    'Sampling Method': ['Sampling method'],
+                    'Sampling steps': ['Sampling Steps'],
+                    'Sampling Steps': ['Sampling steps'],
+                    'Batch count': ['Batch Count'],
+                    'Batch Count': ['Batch count'],
+                    'Batch size': ['Batch Size'],
+                    'Batch Size': ['Batch size']
+                };
+                for (const variant of (labelVariants[label] || [])) {
+                    appendUnique(`${rootTypePrefix}${variant}`);
+                }
+                const samplerLabelMap = {
+                    'Sampling method': 'Sampling Method',
+                    'Sampling Method': 'Sampling Method',
+                    'Sampling steps': 'Sampling Steps',
+                    'Sampling Steps': 'Sampling Steps',
+                    'Schedule type': 'Schedule Type',
+                    'Schedule Type': 'Schedule Type',
+                    'Batch count': 'Batch Count',
+                    'Batch Count': 'Batch Count',
+                    'Batch size': 'Batch Size',
+                    'Batch Size': 'Batch Size'
+                };
+                const samplerLabel = samplerLabelMap[label];
+                if (samplerLabel) {
+                    appendUnique(`customscript/sampler.py/${entry.data.type}/${samplerLabel}`);
+                }
+            }
+            return alternatives;
+        }
+        function isMissingPreviewValue(value) {
+            return value === undefined || value === null || value === '';
+        }
+        function getDisplayValue(value, fallback = '-') {
+            return isMissingPreviewValue(value) ? fallback : value;
+        }
+        function resolveSavedValue(settingPath) {
+            const defaults = sm.memoryStorage.savedDefaults[entry.data.defaults] || {};
+            let foundFallback = null;
+            for (const candidate of getAlternativeSettingPaths(settingPath)) {
+                if (entryComponentSettings.hasOwnProperty(candidate)) {
+                    const value = entryComponentSettings[candidate];
+                    if (!isMissingPreviewValue(value)) {
+                        return { path: candidate, value: value };
+                    }
+                    if (!foundFallback) {
+                        foundFallback = { path: candidate, value: value };
+                    }
+                }
+                if (defaults.hasOwnProperty(candidate)) {
+                    const value = defaults[candidate];
+                    if (!isMissingPreviewValue(value)) {
+                        return { path: candidate, value: value };
+                    }
+                    if (!foundFallback) {
+                        foundFallback = { path: candidate, value: value };
+                    }
+                }
+            }
+            return foundFallback || { path: settingPath, value: undefined };
+        }
         function getSavedValue(settingPath) {
-            return entryComponentSettings.hasOwnProperty(settingPath) ? entryComponentSettings[settingPath] : sm.memoryStorage.savedDefaults[entry.data.defaults][settingPath];
+            return resolveSavedValue(settingPath).value;
         }
         function createCompositeInspectorParameter(label, displayValueFormatter, settingPaths) {
             settingPaths.forEach(curatedSettingNames.add.bind(curatedSettingNames));
-            const valueMap = settingPaths.reduce((values, settingPath) => { values[settingPath] = getSavedValue(settingPath); return values; }, {});
-            const param = sm.createInspectorParameter(label, displayValueFormatter(valueMap), () => sm.applyComponentSettings(valueMap), () => sm.setValueDiffAttribute(param, ...Object.keys(valueMap).map(p => ({ path: p, value: valueMap[p] }))), `component/${settingPaths.join('|')}`);
+            const resolvedSettingPaths = [];
+            const valueMap = settingPaths.reduce((values, settingPath) => {
+                const resolved = resolveSavedValue(settingPath);
+                values[settingPath] = resolved.value;
+                if (resolved.path != settingPath) {
+                    values[resolved.path] = resolved.value;
+                }
+                if (resolvedSettingPaths.indexOf(resolved.path) == -1) {
+                    resolvedSettingPaths.push(resolved.path);
+                }
+                curatedSettingNames.add(resolved.path);
+                return values;
+            }, {});
+            const applyMap = resolvedSettingPaths.reduce((result, path) => {
+                result[path] = valueMap[path];
+                return result;
+            }, {});
+            const param = sm.createInspectorParameter(label, displayValueFormatter(valueMap), () => sm.applyComponentSettings(applyMap), () => sm.setValueDiffAttribute(param, ...Object.keys(applyMap).map(p => ({ path: p, value: applyMap[p] }))), `component/${settingPaths.join('|')}`);
             param.update();
             return param;
         }
         function _createGenerationInspectorParameter(label, settingPath, factory) {
             curatedSettingNames.add(settingPath);
-            const value = getSavedValue(settingPath);
-            const parameter = factory(label, value, () => sm.applyComponentSettings({ [settingPath]: value }), () => sm.setValueDiffAttribute(parameter, { path: settingPath, value: value }), `component/${settingPath}`);
+            const resolved = resolveSavedValue(settingPath);
+            const value = resolved.value;
+            curatedSettingNames.add(resolved.path);
+            const parameter = factory(label, value, () => sm.applyComponentSettings({ [resolved.path]: value }), () => sm.setValueDiffAttribute(parameter, { path: resolved.path, value: value }), `component/${settingPath}`);
             parameter.update();
             return parameter;
         }
@@ -2485,9 +2578,9 @@ declare let onAfterUiUpdate: (callback) => void;
         const getScriptSettingName = (scriptName, settingName) => `customscript/${scriptName}.py/${entry.data.type}/${settingName}`;
         generationSettingsContent.appendChild(createGenerationInspectorPromptParameter('Prompt', getRootSettingName('Prompt')));
         generationSettingsContent.appendChild(createGenerationInspectorPromptParameter('Negative prompt', getRootSettingName('Negative prompt')));
-        generationSettingsContent.appendChild(createCompositeInspectorParameter("Sampling", valueMap => `${valueMap[getRootSettingName('Sampling method')]} (${valueMap[getRootSettingName('Sampling steps')]} steps)`, [getRootSettingName('Sampling method'), getRootSettingName('Sampling steps')]));
-        generationSettingsContent.appendChild(createCompositeInspectorParameter("Size", valueMap => `${valueMap[getRootSettingName('Width')]} x ${valueMap[getRootSettingName('Height')]}`, [getRootSettingName('Width'), getRootSettingName('Height')]));
-        generationSettingsContent.appendChild(createCompositeInspectorParameter("Batches", valueMap => `${valueMap[getRootSettingName('Batch count')]} x ${valueMap[getRootSettingName('Batch size')]}`, [getRootSettingName('Batch count'), getRootSettingName('Batch size')]));
+        generationSettingsContent.appendChild(createCompositeInspectorParameter("Sampling", valueMap => `${getDisplayValue(valueMap[getRootSettingName('Sampling method')])} (${getDisplayValue(valueMap[getRootSettingName('Sampling steps')])} steps)`, [getRootSettingName('Sampling method'), getRootSettingName('Sampling steps')]));
+        generationSettingsContent.appendChild(createCompositeInspectorParameter("Size", valueMap => `${getDisplayValue(valueMap[getRootSettingName('Width')])} x ${getDisplayValue(valueMap[getRootSettingName('Height')])}`, [getRootSettingName('Width'), getRootSettingName('Height')]));
+        generationSettingsContent.appendChild(createCompositeInspectorParameter("Batches", valueMap => `${getDisplayValue(valueMap[getRootSettingName('Batch count')])} x ${getDisplayValue(valueMap[getRootSettingName('Batch size')])}`, [getRootSettingName('Batch count'), getRootSettingName('Batch size')]));
         generationSettingsContent.appendChild(createGenerationInspectorParameter("CFG Scale", getRootSettingName('CFG Scale')));
         generationSettingsContent.appendChild(createGenerationInspectorParameter("Seed", getScriptSettingName('seed', 'Seed')));
         generationSettingsContent.appendChild(createGenerationInspectorParameter("Use subseed", getScriptSettingName('seed', 'Extra')));
@@ -2507,6 +2600,8 @@ declare let onAfterUiUpdate: (callback) => void;
             hiresFixSettingsContent.appendChild(createGenerationInspectorParameter("Enabled", getRootSettingName('Hires. fix')));
             hiresFixSettingsContent.appendChild(createGenerationInspectorParameter("Upscaler", getRootSettingName('Upscaler')));
             hiresFixSettingsContent.appendChild(createGenerationInspectorParameter("Steps", getRootSettingName('Hires steps')));
+            hiresFixSettingsContent.appendChild(createGenerationInspectorParameter("CFG Scale", getRootSettingName('Hires CFG Scale')));
+            hiresFixSettingsContent.appendChild(createGenerationInspectorParameter("Distilled CFG Scale", getRootSettingName('Hires Distilled CFG Scale')));
             hiresFixSettingsContent.appendChild(createGenerationInspectorParameter("Denoising strength", getRootSettingName('Denoising strength')));
             hiresFixSettingsContent.appendChild(createGenerationInspectorParameter("Upscale by", getRootSettingName('Upscale by')));
             hiresFixSettingsContent.appendChild(createGenerationInspectorParameter("Checkpoint", getRootSettingName('Hires checkpoint')));
@@ -2523,7 +2618,7 @@ declare let onAfterUiUpdate: (callback) => void;
             sm.inspector.appendChild(sm.createInspectorSettingsAccordion('Refiner', refinersSettingsContent));
         }
         // Regardless of whether or not we've added Hires fix. or Refiner settings, they shouldn't be added in the xxx2img accordion (if not used, means it was disabled)
-        [getRootSettingName('Hires. fix'), getRootSettingName('Upscaler'), getRootSettingName('Hires steps'), getRootSettingName('Denoising strength'),
+        [getRootSettingName('Hires. fix'), getRootSettingName('Upscaler'), getRootSettingName('Hires steps'), getRootSettingName('Hires CFG Scale'), getRootSettingName('Hires Distilled CFG Scale'), getRootSettingName('Denoising strength'),
             getRootSettingName('Upscale by'), getRootSettingName('Hires checkpoint'), getRootSettingName('Hires sampling method'), getRootSettingName('Hires prompt'),
             getRootSettingName('Hires negative prompt'), getScriptSettingName('refiner', 'Refiner'), getScriptSettingName('refiner', 'Checkpoint'),
             getScriptSettingName('refiner', 'Switch at')
@@ -2643,7 +2738,8 @@ declare let onAfterUiUpdate: (callback) => void;
     sm.applyComponentSettings = function (settings) {
         for (let componentPath of Object.keys(settings)) {
             const settingPathInfo = sm.utils.getSettingPathInfo(componentPath);
-            const componentData = sm.componentMap[settingPathInfo.basePath];
+            const resolvedBasePath = sm.resolveComponentPath(settingPathInfo.basePath);
+            const componentData = sm.componentMap[resolvedBasePath];
             if (!componentData) {
                 console.warn(`[State Manager] Could not apply component path ${settingPathInfo.basePath}`);
                 continue;
@@ -2858,6 +2954,36 @@ declare let onAfterUiUpdate: (callback) => void;
         const pathParts = settingPathInfo.basePath.split('/');
         return `${pathParts[pathParts.length - 1] ?? ''}`.trim();
     };
+    sm.resolveComponentPath = function (settingPath) {
+        const basePath = sm.utils.getSettingPathInfo(`${settingPath ?? ''}`).basePath;
+        const candidates = [basePath];
+        const appendCandidate = (path) => {
+            if (path && candidates.indexOf(path) == -1) {
+                candidates.push(path);
+            }
+        };
+        const explicitAliases = {
+            'txt2img/Hires CFG Scale': ['txt2img/Hires CFG scale'],
+            'txt2img/Hires Distilled CFG Scale': ['txt2img/Hires Distilled CFG scale'],
+            'img2img/Hires CFG Scale': ['img2img/Hires CFG scale'],
+            'img2img/Hires Distilled CFG Scale': ['img2img/Hires Distilled CFG scale']
+        };
+        for (const alias of (explicitAliases[basePath] || [])) {
+            appendCandidate(alias);
+        }
+        for (const candidate of candidates) {
+            if (sm.componentMap.hasOwnProperty(candidate)) {
+                return candidate;
+            }
+            const lowerCandidate = candidate.toLowerCase();
+            for (const mappedPath of Object.keys(sm.componentMap)) {
+                if (mappedPath.toLowerCase() == lowerCandidate) {
+                    return mappedPath;
+                }
+            }
+        }
+        return basePath;
+    };
     sm.findElementBySelectorOrFallback = function (settingPath) {
         // Priority 1: Check explicit Forge Neo selector map
         const selector = sm.forgeNeoSelectorMap?.[settingPath];
@@ -2929,7 +3055,45 @@ declare let onAfterUiUpdate: (callback) => void;
             }
             return undefined;
         }
-        return entry.component?.props?.value;
+        const componentValue = entry.component?.props?.value;
+        if (componentValue !== undefined) {
+            return componentValue;
+        }
+        // Forge Neo InputAccordionImpl and some custom wrappers don't always expose props.value.
+        // Try common Gradio/Svelte instance contexts before falling back to DOM extraction.
+        const instanceContextValue = entry.component?.instance?.$$?.ctx?.[0];
+        if (instanceContextValue !== undefined) {
+            return instanceContextValue;
+        }
+        const element = entry.element;
+        if (element instanceof HTMLInputElement) {
+            if (element.type == 'checkbox') {
+                return element.checked;
+            }
+            if (element.type == 'number' || element.type == 'range') {
+                const value = Number(element.value);
+                return Number.isNaN(value) ? element.value : value;
+            }
+            return element.value;
+        }
+        if (element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
+            return element.value;
+        }
+        const nestedInput = element?.querySelector?.('textarea, input[type="text"], input[type="number"], input[type="range"], select, input[type="checkbox"]');
+        if (nestedInput instanceof HTMLInputElement) {
+            if (nestedInput.type == 'checkbox') {
+                return nestedInput.checked;
+            }
+            if (nestedInput.type == 'number' || nestedInput.type == 'range') {
+                const value = Number(nestedInput.value);
+                return Number.isNaN(value) ? nestedInput.value : value;
+            }
+            return nestedInput.value;
+        }
+        if (nestedInput instanceof HTMLTextAreaElement || nestedInput instanceof HTMLSelectElement) {
+            return nestedInput.value;
+        }
+        return undefined;
     };
     sm.setMappedComponentEntryValue = function (entry, value) {
         if (!entry) {
@@ -3427,7 +3591,8 @@ declare let onAfterUiUpdate: (callback) => void;
         let settings = {};
         // let noComponentFoundSettings: string[] = [];
         for (const componentPath of Object.keys(sm.memoryStorage.currentDefault.contents)) {
-            const componentData = sm.componentMap[componentPath];
+            const resolvedComponentPath = sm.resolveComponentPath(componentPath);
+            const componentData = sm.componentMap[resolvedComponentPath];
             if (!componentData) {
                 // noComponentFoundSettings.push(componentPath);
                 continue;
