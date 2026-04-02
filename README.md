@@ -164,15 +164,23 @@ https://github.com/eduardoabreu81/sd-webui-state-manager-neo
 
 ## 📄 Credits
 
-**[SenshiSentou/sd-webui-state-manager](https://github.com/SenshiSentou/sd-webui-state-manager)**
+### Foundation
 
-Original architecture and save/restore foundation.
+- 🧩 [sd-webui-state-manager](https://github.com/SenshiSentou/sd-webui-state-manager) by SenshiSentou — original project and core architecture
 
-**[dane-9/sd-webui-state-manager-continued](https://github.com/dane-9/sd-webui-state-manager-continued)**
+- 🔧 [sd-webui-state-manager-continued](https://github.com/dane-9/sd-webui-state-manager-continued) by dane-9 — continued maintenance and fixes before Neo focus
 
-Continued maintenance before Neo-specific focus.
+- 🧱 [Forge Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo) by Haoming02 — platform this extension targets
 
-**[Forge Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)** by [Haoming02](https://github.com/Haoming02)
+### What Is Different In This Neo Fork
+
+- ⭐ Version-focused History workflow for configs (preview-first cards + restore by version)
+
+- 🛡️ Safer restore behavior in History (browse versions without destructive auto-apply)
+
+- 🎯 Forge Neo-specific compatibility hardening for state capture and restore flows
+
+- 🧭 Cleaner config iteration workflow with Save Changes + version trail
 
 ---
 
