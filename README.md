@@ -40,6 +40,10 @@ Then restore everything with one click.
 
 - **Version list is clearer** with vertical rows and compact summary
 
+- **History startup layout is stable** (no initial horizontal flash before vertical version list)
+
+- **Version list scroll sizing is fixed** (last version card no longer clipped at the bottom)
+
 - **Schedule Type support** improved in save/restore inspector coverage
 
 ### v0.0.1 - Forge Neo Baseline
@@ -63,6 +67,10 @@ Then restore everything with one click.
 - Version entries include version number and short change summary
 
 - History now supports cleaner version browsing and restore flow
+
+- Startup layout transition in History was stabilized to prevent first-load horizontal flicker
+
+- History version list container sizing was corrected to prevent bottom clipping on the last card
 
 - Search and sampler-related mapping coverage were improved
 
