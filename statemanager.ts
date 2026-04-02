@@ -142,6 +142,39 @@ declare let onAfterUiUpdate: (callback) => void;
             showFavouritesInHistory: Boolean(filter.showFavouritesInHistory)
         };
     };
+    sm.collectSearchableEntryText = function (value, visited = new Set()) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+        const valueType = typeof value;
+        if (valueType == 'string' || valueType == 'number' || valueType == 'boolean') {
+            return `${value}`.toLowerCase();
+        }
+        if (Array.isArray(value)) {
+            return value.map(item => sm.collectSearchableEntryText(item, visited)).filter(text => text.length > 0).join(' ');
+        }
+        if (valueType == 'object') {
+            if (visited.has(value)) {
+                return '';
+            }
+            visited.add(value);
+            const pieces = [];
+            for (const [key, child] of Object.entries(value)) {
+                const lowerKey = `${key}`.toLowerCase();
+                if (lowerKey == 'preview' || lowerKey == 'image' || lowerKey == 'thumbnail' || lowerKey == 'blob' || lowerKey == 'datauri') {
+                    continue;
+                }
+                pieces.push(lowerKey);
+                const childText = sm.collectSearchableEntryText(child, visited);
+                if (childText.length > 0) {
+                    pieces.push(childText);
+                }
+            }
+            visited.delete(value);
+            return pieces.join(' ').trim();
+        }
+        return '';
+    };
     sm.syncEntryFilterControls = function () {
         if (!sm.panelContainer) {
             return;
@@ -731,11 +764,13 @@ declare let onAfterUiUpdate: (callback) => void;
             const sampler = `${data.generationSettings?.sampler ?? ''}`.toLowerCase();
             const prompt = `${data.generationSettings?.prompt ?? ''}`.toLowerCase();
             const negativePrompt = `${data.generationSettings?.negativePrompt ?? ''}`.toLowerCase();
+            const historySearchText = f.group == 'history' ? sm.collectSearchableEntryText(data) : '';
+            const historySearchName = `${data.name ?? ''}`.toLowerCase();
             return (data.groups?.indexOf(f.group) ?? -1) > -1 && f.types.indexOf(data.type) > -1 &&
                 showEntryInHistory &&
                 (f.query == '' || queries.every(q => checkpointName.indexOf(q) > -1 || sampler.indexOf(q) > -1 ||
                     prompt.indexOf(q) > -1 || negativePrompt.indexOf(q) > -1 ||
-                    (data.hasOwnProperty('name') && `${data.name ?? ''}`.toLowerCase().indexOf(q) > -1)));
+                    historySearchName.indexOf(q) > -1 || historySearchText.indexOf(q) > -1));
         }
     };
     sm.loadPreferences();
@@ -2579,6 +2614,7 @@ declare let onAfterUiUpdate: (callback) => void;
         generationSettingsContent.appendChild(createGenerationInspectorPromptParameter('Prompt', getRootSettingName('Prompt')));
         generationSettingsContent.appendChild(createGenerationInspectorPromptParameter('Negative prompt', getRootSettingName('Negative prompt')));
         generationSettingsContent.appendChild(createCompositeInspectorParameter("Sampling", valueMap => `${getDisplayValue(valueMap[getRootSettingName('Sampling method')])} (${getDisplayValue(valueMap[getRootSettingName('Sampling steps')])} steps)`, [getRootSettingName('Sampling method'), getRootSettingName('Sampling steps')]));
+        generationSettingsContent.appendChild(createGenerationInspectorParameter("Schedule Type", getRootSettingName('Schedule Type')));
         generationSettingsContent.appendChild(createCompositeInspectorParameter("Size", valueMap => `${getDisplayValue(valueMap[getRootSettingName('Width')])} x ${getDisplayValue(valueMap[getRootSettingName('Height')])}`, [getRootSettingName('Width'), getRootSettingName('Height')]));
         generationSettingsContent.appendChild(createCompositeInspectorParameter("Batches", valueMap => `${getDisplayValue(valueMap[getRootSettingName('Batch count')])} x ${getDisplayValue(valueMap[getRootSettingName('Batch size')])}`, [getRootSettingName('Batch count'), getRootSettingName('Batch size')]));
         generationSettingsContent.appendChild(createGenerationInspectorParameter("CFG Scale", getRootSettingName('CFG Scale')));
@@ -2618,7 +2654,7 @@ declare let onAfterUiUpdate: (callback) => void;
             sm.inspector.appendChild(sm.createInspectorSettingsAccordion('Refiner', refinersSettingsContent));
         }
         // Regardless of whether or not we've added Hires fix. or Refiner settings, they shouldn't be added in the xxx2img accordion (if not used, means it was disabled)
-        [getRootSettingName('Hires. fix'), getRootSettingName('Upscaler'), getRootSettingName('Hires steps'), getRootSettingName('Hires CFG Scale'), getRootSettingName('Hires Distilled CFG Scale'), getRootSettingName('Denoising strength'),
+        [getRootSettingName('Hires. fix'), getRootSettingName('Upscaler'), getRootSettingName('Hires steps'), getRootSettingName('Hires CFG Scale'), getRootSettingName('Hires Distilled CFG Scale'), getRootSettingName('Denoising strength'), getRootSettingName('Schedule Type'),
             getRootSettingName('Upscale by'), getRootSettingName('Hires checkpoint'), getRootSettingName('Hires sampling method'), getRootSettingName('Hires prompt'),
             getRootSettingName('Hires negative prompt'), getScriptSettingName('refiner', 'Refiner'), getScriptSettingName('refiner', 'Checkpoint'),
             getScriptSettingName('refiner', 'Switch at')
@@ -2963,6 +2999,18 @@ declare let onAfterUiUpdate: (callback) => void;
             }
         };
         const explicitAliases = {
+            'txt2img/Sampling method': ['customscript/sampler.py/txt2img/Sampling Method'],
+            'txt2img/Sampling Method': ['customscript/sampler.py/txt2img/Sampling Method'],
+            'txt2img/Sampling steps': ['customscript/sampler.py/txt2img/Sampling Steps'],
+            'txt2img/Sampling Steps': ['customscript/sampler.py/txt2img/Sampling Steps'],
+            'txt2img/Schedule type': ['customscript/sampler.py/txt2img/Schedule Type'],
+            'txt2img/Schedule Type': ['customscript/sampler.py/txt2img/Schedule Type'],
+            'img2img/Sampling method': ['customscript/sampler.py/img2img/Sampling Method'],
+            'img2img/Sampling Method': ['customscript/sampler.py/img2img/Sampling Method'],
+            'img2img/Sampling steps': ['customscript/sampler.py/img2img/Sampling Steps'],
+            'img2img/Sampling Steps': ['customscript/sampler.py/img2img/Sampling Steps'],
+            'img2img/Schedule type': ['customscript/sampler.py/img2img/Schedule Type'],
+            'img2img/Schedule Type': ['customscript/sampler.py/img2img/Schedule Type'],
             'txt2img/Hires CFG Scale': ['txt2img/Hires CFG scale'],
             'txt2img/Hires Distilled CFG Scale': ['txt2img/Hires Distilled CFG scale'],
             'img2img/Hires CFG Scale': ['img2img/Hires CFG scale'],
