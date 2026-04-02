@@ -1081,11 +1081,20 @@
         else if (wasFavourite && !isFavourite) {
             sm.removeFavouritesOrderKey?.(entryStateKey);
         }
+        const savedConfigVersionId = `${updatedState?.configVersionId ?? configVersionId ?? ''}`.trim();
+        const viewedConfigVersionId = `${sm.historyVersionContext?.configVersionId ?? ''}`.trim();
+        const shouldRefreshHistoryVersions = sm.activePanelTab == 'history'
+            && sm.entryFilter.group == 'history'
+            && savedConfigVersionId.length > 0
+            && viewedConfigVersionId == savedConfigVersionId;
         sm.activeProfileDraft = null;
         sm.updateStorage();
         sm.updateEntryIndicators(entry);
         sm.updateEntries();
         sm.updateInspector();
+        if (shouldRefreshHistoryVersions) {
+            sm.queueEntriesUpdate(0);
+        }
     };
     sm.getEntriesPerPage = function () {
         if (sm.getMode() == 'modal') {
@@ -1125,14 +1134,20 @@
         sm.previewObserver?.unobserve(entry);
         delete entry.dataset['previewSrc'];
         delete entry.dataset['previewLoaded'];
-        entry.style.backgroundImage = '';
+        const previewTarget = entry.classList.contains('sd-webui-sm-history-version-row')
+            ? (entry.querySelector('.sd-webui-sm-entry-thumb') || entry)
+            : entry;
+        previewTarget.style.backgroundImage = '';
     };
     sm.applyEntryPreview = function (entry, previewSrc) {
         const applyIfCurrent = () => {
             if (`${entry.dataset['previewSrc'] ?? ''}` !== previewSrc) {
                 return;
             }
-            entry.style.backgroundImage = `url("${previewSrc}")`;
+            const previewTarget = entry.classList.contains('sd-webui-sm-history-version-row')
+                ? (entry.querySelector('.sd-webui-sm-entry-thumb') || entry)
+                : entry;
+            previewTarget.style.backgroundImage = `url("${previewSrc}")`;
             entry.dataset['previewLoaded'] = previewSrc;
             loadedPreviewUrls.add(previewSrc);
         };
@@ -1147,11 +1162,14 @@
     };
     sm.queueEntryPreview = function (entry, previewSrc) {
         entry.dataset['previewSrc'] = previewSrc;
+        const previewTarget = entry.classList.contains('sd-webui-sm-history-version-row')
+            ? (entry.querySelector('.sd-webui-sm-entry-thumb') || entry)
+            : entry;
         if (`${entry.dataset['previewLoaded'] ?? ''}` === previewSrc) {
-            entry.style.backgroundImage = `url("${previewSrc}")`;
+            previewTarget.style.backgroundImage = `url("${previewSrc}")`;
             return;
         }
-        entry.style.backgroundImage = '';
+        previewTarget.style.backgroundImage = '';
         if (previewSrc.length == 0) {
             return;
         }
@@ -1159,7 +1177,7 @@
             sm.applyEntryPreview(entry, previewSrc);
             return;
         }
-        const entriesRoot = sm.panelContainer?.querySelector('.sd-webui-sm-entries');
+        const entriesRoot = entry.closest('.sd-webui-sm-history-version-entries') || entry.closest('.sd-webui-sm-entries') || sm.panelContainer?.querySelector('.sd-webui-sm-entries');
         if (!entriesRoot) {
             sm.applyEntryPreview(entry, previewSrc);
             return;
@@ -1646,8 +1664,11 @@
         entryHeader.appendChild(filterRow);
         // Entries
         const entries = sm.createElementWithClassList('div', 'sd-webui-sm-entries');
+        const historyVersionEntries = sm.createElementWithClassList('div', 'sd-webui-sm-history-version-entries');
+        historyVersionEntries.style.display = 'none';
         entryContainer.appendChild(entryHeader);
         entryContainer.appendChild(entries);
+        entryContainer.appendChild(historyVersionEntries);
         entryContainer.appendChild(entryFooter);
         settingsPanel = sm.createElementWithClassList('div', 'sd-webui-sm-settings-panel');
         const settingsTitle = sm.createElementWithInnerTextAndClassList('h2', 'Settings', 'sd-webui-sm-settings-title');
@@ -1905,15 +1926,24 @@
         const createEntrySlot = () => {
             const entry = sm.createElementWithClassList('button', 'sd-webui-sm-entry');
             entry.style.display = 'none';
-            entry.appendChild(sm.createElementWithClassList('div', 'type'));
-            entry.appendChild(sm.createElementWithClassList('div', 'config-name'));
+            const previewThumb = sm.createElementWithClassList('div', 'sd-webui-sm-entry-thumb');
+            const content = sm.createElementWithClassList('div', 'sd-webui-sm-entry-main');
+            content.appendChild(sm.createElementWithClassList('div', 'type'));
+            content.appendChild(sm.createElementWithClassList('div', 'config-name'));
+            const versionTimestamp = sm.createElementWithClassList('div', 'sd-webui-sm-entry-version-timestamp');
+            const versionSummary = sm.createElementWithClassList('div', 'sd-webui-sm-entry-version-summary');
+            content.appendChild(versionTimestamp);
+            content.appendChild(versionSummary);
+            entry.appendChild(previewThumb);
+            entry.appendChild(content);
             const gearButton = sm.createElementWithClassList('div', 'sd-webui-sm-entry-gear');
             gearButton.innerText = '⚙';
             gearButton.title = 'Config actions';
             gearButton.tabIndex = 0;
             gearButton.setAttribute('role', 'button');
             entry.appendChild(gearButton);
-            const restoreButton = sm.createElementWithClassList('div', 'sd-webui-sm-entry-restore');
+            const restoreButton = sm.createElementWithClassList('button', 'sd-webui-sm-entry-restore', 'sd-webui-sm-inspector-load-button');
+            restoreButton.type = 'button';
             restoreButton.innerText = 'Restore';
             restoreButton.title = 'Restore this version';
             restoreButton.tabIndex = 0;
@@ -1923,15 +1953,16 @@
             const footer = sm.createElementWithClassList('div', 'footer');
             footer.appendChild(sm.createElementWithClassList('div', 'date'));
             footer.appendChild(sm.createElementWithClassList('div', 'time'));
-            entry.appendChild(footer);
+            content.appendChild(footer);
             return entry;
         };
-        sm.ensureEntrySlotCount = function (minCount) {
-            while (entries.childNodes.length < minCount) {
-                entries.appendChild(createEntrySlot());
+        sm.ensureEntrySlotCount = function (targetEntries, minCount) {
+            while (targetEntries.childNodes.length < minCount) {
+                targetEntries.appendChild(createEntrySlot());
             }
         };
-        sm.ensureEntrySlotCount(initialEntrySlotCount);
+        sm.ensureEntrySlotCount(entries, initialEntrySlotCount);
+        sm.ensureEntrySlotCount(historyVersionEntries, initialEntrySlotCount);
         const previewFileInput = document.createElement('input');
         previewFileInput.type = 'file';
         previewFileInput.accept = 'image/*';
@@ -2009,7 +2040,9 @@
             }
             return entry;
         };
-        entries.addEventListener('click', (event) => {
+        const entryLists = [entries, historyVersionEntries];
+        for (const entryList of entryLists) {
+        entryList.addEventListener('click', (event) => {
             if (!(event.target instanceof Element)) {
                 return;
             }
@@ -2070,9 +2103,12 @@
                 sm.syncHistoryVersionContextFromSelection?.();
             }
         });
-        entries.addEventListener('dblclick', (event) => {
+        entryList.addEventListener('dblclick', (event) => {
             const entry = getEntryFromEvent(event);
             if (!entry) {
+                return;
+            }
+            if (sm.isHistoryVersionPreviewMode()) {
                 return;
             }
             if (!sm.canProceedWithApplyAction()) {
@@ -2080,7 +2116,7 @@
             }
             sm.applyAll(entry.data);
         });
-        entries.addEventListener('keydown', (event) => {
+        entryList.addEventListener('keydown', (event) => {
             if (event.key != 'Enter' && event.key != ' ') {
                 return;
             }
@@ -2095,6 +2131,7 @@
             event.stopPropagation();
             gearButton.click();
         });
+        }
         document.addEventListener('mousedown', (event) => {
             if (entryGearMenu.dataset['open'] != 'true') {
                 return;
@@ -2315,24 +2352,21 @@
         entryEventListenerAbortController = new AbortController();
         sm.syncPaginationInteractionState();
         const currentEntriesPerPage = sm.getEntriesPerPage();
-        const entries = sm.panelContainer.querySelector('.sd-webui-sm-entries');
+        const standardEntries = sm.panelContainer.querySelector('.sd-webui-sm-entries');
+        const historyEntries = sm.panelContainer.querySelector('.sd-webui-sm-history-version-entries');
         const isHistoryVersionMode = sm.isHistoryVersionPreviewMode();
         sm.inspectorPreviewOnly = isHistoryVersionMode;
-        if (entries) {
-            if (isHistoryVersionMode) {
-                entries.style.display = 'flex';
-                entries.style.flexDirection = 'column';
-                entries.style.alignItems = 'stretch';
-                entries.style.gap = '8px';
-            }
-            else {
-                entries.style.removeProperty('display');
-                entries.style.removeProperty('flex-direction');
-                entries.style.removeProperty('align-items');
-                entries.style.removeProperty('gap');
-            }
+        const entries = isHistoryVersionMode ? historyEntries : standardEntries;
+        if (!entries) {
+            return;
         }
-        sm.ensureEntrySlotCount(currentEntriesPerPage);
+        if (standardEntries) {
+            standardEntries.style.display = isHistoryVersionMode ? 'none' : '';
+        }
+        if (historyEntries) {
+            historyEntries.style.display = isHistoryVersionMode ? 'flex' : 'none';
+        }
+        sm.ensureEntrySlotCount(entries, currentEntriesPerPage);
         const historyVersionContextId = `${sm.historyVersionContext?.configVersionId ?? ''}`.trim();
         const filteredEntries = Object.entries(sm.memoryStorage.entries.data).filter(kv => {
             const [stateKey, stateData] = kv;
@@ -2422,6 +2456,7 @@
             const entry = entries.childNodes[i];
             const entryStateKey = `${data.createdAt ?? ''}`;
             entry.data = data;
+            entry.classList.toggle('sd-webui-sm-history-version-row', isHistoryVersionMode);
             sm.queueEntryPreview(entry, `${data.preview ?? ''}`);
             entry.style.display = isHistoryVersionMode ? 'flex' : 'inherit';
             entry.style.width = isHistoryVersionMode ? '100%' : '';
@@ -2444,15 +2479,28 @@
             const timeElement = entry.querySelector('.time');
             const versionChangeSummary = `${data.configVersionChangeSummary ?? ''}`.trim();
             const displayConfigName = isHistoryVersionMode
-                ? [`v${versionNumber}`, fullTimestamp, versionChangeSummary].filter(part => part.length > 0).join(' — ')
+                ? `v${versionNumber}`
                 : configName;
-            entry.querySelector('.type').innerText = `${data.type == 'txt2img' ? '🖋' : '🖼️'} ${data.type}`;
+            const typeElement = entry.querySelector('.type');
+            const timestampElement = entry.querySelector('.sd-webui-sm-entry-version-timestamp');
+            const summaryElement = entry.querySelector('.sd-webui-sm-entry-version-summary');
+            const gearElement = entry.querySelector('.sd-webui-sm-entry-gear');
+            typeElement.innerText = `${data.type == 'txt2img' ? '🖋' : '🖼️'} ${data.type}`;
             entry.querySelector('.config-name').innerText = displayConfigName;
             entry.querySelector('.config-name').title = displayConfigName;
             entry.classList.toggle('has-config-name', displayConfigName.length > 0);
+            if (timestampElement) {
+                timestampElement.innerText = isHistoryVersionMode ? fullTimestamp : '';
+            }
+            if (summaryElement) {
+                summaryElement.innerText = isHistoryVersionMode ? (versionChangeSummary.length > 0 ? versionChangeSummary : 'No summary') : '';
+            }
+            if (gearElement) {
+                gearElement.style.display = isHistoryVersionMode ? 'none' : '';
+            }
             const restoreButton = entry.querySelector('.sd-webui-sm-entry-restore');
             if (restoreButton) {
-                restoreButton.style.display = isHistoryVersionMode ? '' : 'none';
+                restoreButton.style.display = isHistoryVersionMode ? 'inline-flex' : 'none';
             }
             dateElement.innerText = fullDateText;
             timeElement.innerText = `${hours}:${minutes}`;
@@ -2463,6 +2511,7 @@
         for (let i = numEntries; i < entries.childNodes.length; i++) {
             const hiddenEntry = entries.childNodes[i];
             hiddenEntry.classList.remove('active');
+            hiddenEntry.classList.remove('sd-webui-sm-history-version-row');
             hiddenEntry.style.display = 'none';
             sm.clearEntryPreview(hiddenEntry);
         }
