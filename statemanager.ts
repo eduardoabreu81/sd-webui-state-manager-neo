@@ -856,7 +856,7 @@ declare let onAfterUiUpdate: (callback) => void;
         }
         if (Array.isArray(sm.activeProfileSaveButtons)) {
             for (const button of sm.activeProfileSaveButtons) {
-                button.disabled = !canSaveConfigChanges || !draft.dirty;
+                button.disabled = !canSaveConfigChanges;
             }
         }
     };
@@ -1010,9 +1010,7 @@ declare let onAfterUiUpdate: (callback) => void;
         if (!canSaveConfigChanges) {
             return;
         }
-        if (!draft.dirty) {
-            return;
-        }
+        const hasProfileMetadataChanges = Boolean(draft.dirty);
         const entryStateKey = `${entry.data.createdAt ?? ''}`;
         const wasFavourite = (entry.data.groups?.indexOf('favourites') ?? -1) > -1;
         const previousState = JSON.parse(JSON.stringify(entry.data || {}));
@@ -1046,6 +1044,9 @@ declare let onAfterUiUpdate: (callback) => void;
         const configVersionId = sm.getConfigVersionBaseId(entry.data, entryStateKey);
         const previousVersionNumber = sm.getConfigVersionNumber(entry.data);
         const changeDetails = sm.getStateChangeDetails(previousState, updatedState);
+        if (!hasProfileMetadataChanges && changeDetails.changedFieldsCount <= 0) {
+            return;
+        }
         const shouldCreateVersionHistory = wasFavourite && isFavourite && changeDetails.changedFieldsCount > 0;
         if (shouldCreateVersionHistory) {
             const historyVersionEntry = sm.createConfigVersionHistoryEntry(previousState, configVersionId, previousVersionNumber, changeDetails.summary);
@@ -2494,7 +2495,7 @@ declare let onAfterUiUpdate: (callback) => void;
             unsaveButton.disabled = !activeDraft.isFavourite;
         };
         syncConfigActionButtons();
-        saveChangesButton.disabled = !canSaveConfigChanges || !activeDraft.dirty;
+        saveChangesButton.disabled = !canSaveConfigChanges;
         metaContainer.appendChild(nameField);
         metaContainer.appendChild(favButton);
         metaContainer.appendChild(unsaveButton);
@@ -2849,7 +2850,7 @@ declare let onAfterUiUpdate: (callback) => void;
             const stickyActionContainer = sm.createElementWithClassList('sd-webui-sm-inspector-save-sticky');
             const stickySaveButton = sm.createElementWithInnerTextAndClassList('button', 'Save Changes', 'sd-webui-sm-inspector-save-button', 'sd-webui-sm-inspector-load-button');
             stickySaveButton.title = canSaveConfigChanges ? "Save edited config settings" : "Save Changes is only available for saved configs";
-            stickySaveButton.disabled = !canSaveConfigChanges || !activeDraft.dirty;
+            stickySaveButton.disabled = !canSaveConfigChanges;
             stickySaveButton.addEventListener('click', () => sm.saveActiveProfileChanges());
             stickyActionContainer.appendChild(loadAllButton);
             stickyActionContainer.appendChild(stickySaveButton);
