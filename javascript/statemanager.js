@@ -933,6 +933,7 @@
         const selectedEntries = sm.selection?.entries || [];
         if (selectedEntries.length != 1 || !selectedEntries[0]?.data) {
             sm.historyVersionContext = { configVersionId: '' };
+            sm.syncHistoryVersionLayoutMode?.();
             return;
         }
         const selectedState = selectedEntries[0].data;
@@ -940,6 +941,10 @@
         sm.historyVersionContext = {
             configVersionId: sm.getConfigVersionBaseId(selectedState, selectedStateKey)
         };
+        sm.syncHistoryVersionLayoutMode?.();
+        if (sm.activePanelTab == 'history' && sm.entryFilter.group == 'history') {
+            sm.queueEntriesUpdate?.(0);
+        }
     };
     sm.getSamplerDisplayValue = function (state) {
         const generationType = `${state?.type ?? ''}`;
@@ -1339,6 +1344,7 @@
                 sm.persistEntryFilterIfEnabled();
                 sm.queueEntriesUpdate(updateEntriesDebounceMs);
             }
+            sm.syncHistoryVersionLayoutMode?.();
         };
         function createNavTab(label, tab, group, isSelected) {
             const button = sm.createElementWithInnerTextAndClassList('button', label, sm.svelteClasses.tab);
@@ -1666,6 +1672,13 @@
         const entries = sm.createElementWithClassList('div', 'sd-webui-sm-entries');
         const historyVersionEntries = sm.createElementWithClassList('div', 'sd-webui-sm-history-version-entries');
         historyVersionEntries.style.display = 'none';
+        sm.syncHistoryVersionLayoutMode = function () {
+            const isHistoryVersionMode = Boolean(sm.isHistoryVersionPreviewMode?.());
+            entryContainer.classList.toggle('sd-webui-sm-history-version-mode', isHistoryVersionMode);
+            entries.style.display = isHistoryVersionMode ? 'none' : '';
+            historyVersionEntries.style.display = isHistoryVersionMode ? 'flex' : 'none';
+        };
+        sm.syncHistoryVersionLayoutMode();
         entryContainer.appendChild(entryHeader);
         entryContainer.appendChild(entries);
         entryContainer.appendChild(historyVersionEntries);
@@ -2190,6 +2203,7 @@
         };
         window.addEventListener('resize', handleSmallViewModeChange);
         sm.applyLoadedPreferences();
+        sm.syncHistoryVersionLayoutMode?.();
         app.addEventListener('input', sm.updateAllValueDiffDatas);
         app.addEventListener('change', sm.updateAllValueDiffDatas);
     };
@@ -2356,15 +2370,10 @@
         const historyEntries = sm.panelContainer.querySelector('.sd-webui-sm-history-version-entries');
         const isHistoryVersionMode = sm.isHistoryVersionPreviewMode();
         sm.inspectorPreviewOnly = isHistoryVersionMode;
+        sm.syncHistoryVersionLayoutMode?.();
         const entries = isHistoryVersionMode ? historyEntries : standardEntries;
         if (!entries) {
             return;
-        }
-        if (standardEntries) {
-            standardEntries.style.display = isHistoryVersionMode ? 'none' : '';
-        }
-        if (historyEntries) {
-            historyEntries.style.display = isHistoryVersionMode ? 'flex' : 'none';
         }
         sm.ensureEntrySlotCount(entries, currentEntriesPerPage);
         const historyVersionContextId = `${sm.historyVersionContext?.configVersionId ?? ''}`.trim();

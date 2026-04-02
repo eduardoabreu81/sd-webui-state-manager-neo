@@ -492,12 +492,35 @@ body.sd-webui-sm-modal-open {
     gap: 8px;
     min-width: 0;
     min-height: 0;
-    height: calc(100% - 4.6em);
+    flex: 1 1 auto;
     overflow-x: hidden;
     overflow-y: auto;
     padding: 4px 6px;
     margin-top: 2px;
     position: static;
+}
+
+.sd-webui-sm-entry-container.sd-webui-sm-history-version-mode {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.sd-webui-sm-modal-panel .sd-webui-sm-entry-container.sd-webui-sm-history-version-mode {
+    display: flex;
+    height: 100%;
+}
+
+.sd-webui-sm-entry-container.sd-webui-sm-history-version-mode .sd-webui-sm-entry-header,
+.sd-webui-sm-entry-container.sd-webui-sm-history-version-mode .sd-webui-sm-entry-footer {
+    flex: 0 0 auto;
+}
+
+.sd-webui-sm-entry-container.sd-webui-sm-history-version-mode .sd-webui-sm-history-version-entries {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
 }
 
 .sd-webui-sm-modal-panel .sd-webui-sm-entries {
