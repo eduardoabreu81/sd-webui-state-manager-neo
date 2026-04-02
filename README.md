@@ -3,6 +3,7 @@
 # 💾 State Manager Neo
 
 [![Forge Neo](https://img.shields.io/badge/Forge-Neo-blue)](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)
+[![Gradio](https://img.shields.io/badge/Gradio-4.40.0-orange)](https://gradio.app/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-0.0.2-blueviolet.svg)](#-whats-new)
 
@@ -10,11 +11,7 @@
 
 </div>
 
-> **Save your full txt2img/img2img setup once, and bring it back instantly whenever you need it.**
-
-State Manager Neo lets you snapshot model, sampler, prompts, Hires settings, scripts, and other UI values.
-
-Then restore everything with one click.
+Save your full txt2img/img2img setup once — model, sampler, prompts, Hires settings, scripts, and all UI values — and bring it back instantly whenever you need it.
 
 ---
 
@@ -22,7 +19,7 @@ Then restore everything with one click.
 
 - [What's New](#-whats-new)
 - [Changelog](#-changelog)
-- [Roadmap](#-roadmap)
+- [Roadmap](#️-roadmap)
 - [Features](#-features)
 - [Installation](#-installation)
 - [Quick Start](#-quick-start)
@@ -32,125 +29,97 @@ Then restore everything with one click.
 
 ## 🆕 What's New
 
-### v0.0.2 - Version History UX
+### v0.0.2 — Version History UX
 
-- **Config overwrite creates version history** in History
-
-- **History version cards are preview-first** (card click previews, Restore applies)
-
-- **Version list is clearer** with vertical rows and compact summary
-
-- **History startup layout is stable** (no initial horizontal flash before vertical version list)
-
-- **Version list scroll sizing is fixed** (last version card no longer clipped at the bottom)
-
+- **Config overwrite creates version history** — each Save Changes archives the previous state into History
+- **History version cards are preview-first** — click a card to preview, use Restore to apply
+- **Vertical version list** with compact summary and change count per version
+- **History startup layout is stable** — no horizontal flash on first load
+- **Last version card no longer clipped** at the bottom of the list
 - **Schedule Type support** improved in save/restore inspector coverage
-
-### v0.0.1 - Forge Neo Baseline
-
-- Startup stability improvements for extension-heavy setups
-
-- Sampling and batch values fixed in previews
-
-- Negative Prompt capture reliability improved
-
-- Hires CFG Scale and Hires Distilled CFG Scale covered for txt2img/img2img
 
 ---
 
 ## 📖 Changelog
 
-### v0.0.2
+### v0.0.2 — Version History UX
 
-- Save Changes on an existing config archives the previous version into History
+- Save Changes on an existing config archives the previous state into History
+- Version entries show version number, timestamp, and short change summary
+- History supports cleaner version browsing and restore flow
+- Startup layout in History stabilized to prevent first-load horizontal flicker
+- History version list container sizing corrected to prevent bottom clipping
+- Search and sampler-related mapping coverage improved
 
-- Version entries include version number and short change summary
-
-- History now supports cleaner version browsing and restore flow
-
-- Startup layout transition in History was stabilized to prevent first-load horizontal flicker
-
-- History version list container sizing was corrected to prevent bottom clipping on the last card
-
-- Search and sampler-related mapping coverage were improved
-
-### v0.0.1
+### v0.0.1 — Forge Neo Baseline
 
 - Fixed initialization race issues on Forge Neo
-
 - Fixed undefined preview values in key generation fields
-
 - Added missing Hires CFG fields to capture/restore flow
+- Sampling and batch values fixed in previews
+- Negative Prompt capture reliability improved
+- Hires Distilled CFG Scale covered for txt2img/img2img
 
 ---
 
 ## 🗺️ Roadmap
 
-### v0.0.2 *(complete)* ✅
+### v0.0.2 — Version History UX *(complete)* ✅
 
 ### v0.1.0 *(planned)*
 
 - Expanded field coverage (Refiner and script-specific values)
-
 - Better metadata options for configs
+- Thumbnail support in History version cards
 
 ### v0.2.0 *(planned)*
 
-- Pinned/favorite improvements
-
+- Pinned/favorite config improvements
 - Config import/export
-
-- Better side-by-side comparison tools
+- Side-by-side version comparison tools
 
 ---
 
 ## 🎯 Features
 
-### Save and Restore
+> ⭐ = exclusive to Neo fork
+
+### 💾 Save and Restore
 
 - Save complete txt2img or img2img state in one click
-
 - Restore full config or apply selected fields only
-
 - Works well for frequent style/project switching
+- Startup auto-apply option for default configs
 
-### Config Workflow
+### 🗂️ Config Workflow
 
-- Named reusable configs
+- Named reusable configs with search and filter support
+- **Save Changes** flow for iterative edits without losing previous state
+- Inspector shows which fields differ between saved config and current UI
 
-- Search and filter support
+### 📜 History Workflow ⭐
 
-- Startup auto-apply option
-
-- Save Changes flow for iterative edits
-
-### History Workflow
-
-- Version-aware history for configs
-
-- Preview selected version before applying
-
-- Restore exactly the version you want
+- Every Save Changes archives the previous config version automatically
+- Version list shows version number, timestamp, and change summary
+- Click any version card to preview it in the inspector — without applying
+- Restore exactly the version you want with a single click
+- History reloads automatically after each Save Changes
 
 ---
 
 ## 📦 Installation
 
-### Inside Forge Neo
-
-1. Open Forge Neo and go to **Extensions**.
-
-2. Click **Install from URL**.
-
+1. Open Forge Neo and go to **Extensions**
+2. Click **Install from URL**
 3. Paste:
 
 ```text
 https://github.com/eduardoabreu81/sd-webui-state-manager-neo
 ```
 
-4. Click **Install** and reload WebUI.
+4. Click **Install** and reload the WebUI
 
-> ⚠️ This extension is for **Forge Neo**.
+> ⚠️ This extension is for **Forge Neo** only.
 >
 > For other environments, use the original [sd-webui-state-manager](https://github.com/SenshiSentou/sd-webui-state-manager).
 
@@ -158,44 +127,40 @@ https://github.com/eduardoabreu81/sd-webui-state-manager-neo
 
 ## 🚀 Quick Start
 
-1. Set up your generation screen the way you want.
-
-2. Open State Manager.
-
-3. Save a config.
-
-4. Change your UI settings.
-
-5. Re-open the saved config and restore.
+1. Set up your generation screen the way you want
+2. Open State Manager and save a config
+3. Change your UI settings and click **Save Changes** to update the config
+4. Go to **History** to see the version trail for that config
+5. Click any version card to preview the diff — then hit **Restore** to apply it
 
 ---
 
 ## 📄 Credits
 
-### Foundation
-
 - 🧩 [sd-webui-state-manager](https://github.com/SenshiSentou/sd-webui-state-manager) by SenshiSentou — original project and core architecture
-
-- 🔧 [sd-webui-state-manager-continued](https://github.com/dane-9/sd-webui-state-manager-continued) by dane-9 — continued maintenance and fixes before Neo focus
-
+- 🔧 [sd-webui-state-manager-continued](https://github.com/dane-9/sd-webui-state-manager-continued) by dane-9 — continued maintenance and fixes
 - 🧱 [Forge Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo) by Haoming02 — platform this extension targets
 
 ### What Is Different In This Neo Fork
 
-- ⭐ Version-focused History workflow for configs (preview-first cards + restore by version)
-
-- 🛡️ Safer restore behavior in History (browse versions without destructive auto-apply)
-
-- 🎯 Forge Neo-specific compatibility hardening for state capture and restore flows
-
-- 🧭 Cleaner config iteration workflow with Save Changes + version trail
+- ⭐ Version-focused History workflow (preview-first cards + restore by version)
+- ⭐ History reloads automatically after Save Changes
+- 🛡️ Safer restore behavior — browse versions without destructive auto-apply
+- 🎯 Forge Neo-specific compatibility hardening for state capture and restore
+- 🧭 Cleaner config iteration with Save Changes + full version trail
 
 ---
 
 ## 📜 License
 
-MIT - see [LICENSE](LICENSE)
+MIT — see [LICENSE](LICENSE)
 
 ---
 
-[Report Bug](https://github.com/eduardoabreu81/sd-webui-state-manager-neo/issues) • [Request Feature](https://github.com/eduardoabreu81/sd-webui-state-manager-neo/issues) • [Discussions](https://github.com/eduardoabreu81/sd-webui-state-manager-neo/discussions)
+<div align="center">
+
+Made with ❤️ for the Stable Diffusion community
+
+**[Report Bug](https://github.com/eduardoabreu81/sd-webui-state-manager-neo/issues)** • **[Request Feature](https://github.com/eduardoabreu81/sd-webui-state-manager-neo/issues)** • **[Discussions](https://github.com/eduardoabreu81/sd-webui-state-manager-neo/discussions)** • **[☕ Ko-fi](https://ko-fi.com/eduardoabreu81)**
+
+</div>
