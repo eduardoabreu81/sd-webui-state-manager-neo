@@ -49,6 +49,7 @@
         preventApplyWithUnsavedConfigEdits: true,
         startupConfigStateKey: ''
     };
+    sm.inspectorPreviewOnly = false;
     sm.loadedEntryFilter = null;
     sm.ldb.get('sd-webui-state-manager-autosave', autosave => {
         if (autosave == null) {
@@ -924,6 +925,9 @@
     sm.getConfigVersionNumber = function (state) {
         const versionNumber = Number.parseInt(`${state?.configVersionNumber ?? ''}`);
         return Number.isFinite(versionNumber) && versionNumber > 0 ? versionNumber : 1;
+    };
+    sm.isHistoryVersionPreviewMode = function () {
+        return sm.activePanelTab == 'history' && sm.entryFilter.group == 'history' && `${sm.historyVersionContext?.configVersionId ?? ''}`.trim().length > 0;
     };
     sm.syncHistoryVersionContextFromSelection = function () {
         const selectedEntries = sm.selection?.entries || [];
@@ -2312,9 +2316,24 @@
         sm.syncPaginationInteractionState();
         const currentEntriesPerPage = sm.getEntriesPerPage();
         const entries = sm.panelContainer.querySelector('.sd-webui-sm-entries');
+        const isHistoryVersionMode = sm.isHistoryVersionPreviewMode();
+        sm.inspectorPreviewOnly = isHistoryVersionMode;
+        if (entries) {
+            if (isHistoryVersionMode) {
+                entries.style.display = 'flex';
+                entries.style.flexDirection = 'column';
+                entries.style.alignItems = 'stretch';
+                entries.style.gap = '8px';
+            }
+            else {
+                entries.style.removeProperty('display');
+                entries.style.removeProperty('flex-direction');
+                entries.style.removeProperty('align-items');
+                entries.style.removeProperty('gap');
+            }
+        }
         sm.ensureEntrySlotCount(currentEntriesPerPage);
         const historyVersionContextId = `${sm.historyVersionContext?.configVersionId ?? ''}`.trim();
-        const isHistoryVersionMode = sm.activePanelTab == 'history' && sm.entryFilter.group == 'history' && historyVersionContextId.length > 0;
         const filteredEntries = Object.entries(sm.memoryStorage.entries.data).filter(kv => {
             const [stateKey, stateData] = kv;
             if (isHistoryVersionMode) {
@@ -2404,7 +2423,8 @@
             const entryStateKey = `${data.createdAt ?? ''}`;
             entry.data = data;
             sm.queueEntryPreview(entry, `${data.preview ?? ''}`);
-            entry.style.display = 'inherit';
+            entry.style.display = isHistoryVersionMode ? 'flex' : 'inherit';
+            entry.style.width = isHistoryVersionMode ? '100%' : '';
             entry.classList.toggle('active', sm.selection.selectedStateKeys.has(entryStateKey));
             const creationDate = new Date(data.createdAt);
             const configName = `${data.name ?? ''}`.trim();
@@ -2474,6 +2494,8 @@
     sm.updateInspector = async function () {
         sm.captureInspectorAccordionState?.();
         sm.inspector.innerHTML = "";
+        const isHistoryVersionMode = sm.isHistoryVersionPreviewMode();
+        sm.inspectorPreviewOnly = isHistoryVersionMode;
         sm.activeProfileSaveButtons = [];
         if (sm.selection.entries.length == 0) {
             sm.activeProfileDraft = null;
@@ -2516,6 +2538,10 @@
         }
         const entry = sm.selection.entries[0];
         const activeDraft = sm.ensureActiveProfileDraft(entry);
+        const currentState = isHistoryVersionMode ? await sm.getCurrentState(entry.data.type) : null;
+        if (entry !== sm.selection.entries[0]) {
+            return;
+        }
         const metaContainer = sm.createElementWithClassList('div', 'category', 'meta-container');
         const nameField = document.createElement('input');
         nameField.placeholder = "Give this config a name";
@@ -2532,6 +2558,9 @@
         deleteButton.title = "Delete this entry (warning: this cannot be undone)";
         saveChangesButton.title = canSaveConfigChanges ? "Save edited config settings" : "Save Changes is only available for saved configs";
         loadAllButton.title = "Apply config settings to the current UI";
+        if (isHistoryVersionMode) {
+            loadAllButton.style.display = 'none';
+        }
         const syncConfigActionButtons = () => {
             const trimmedName = `${activeDraft.name ?? ''}`.trim();
             const hasConfigName = trimmedName.length > 0;
@@ -2621,11 +2650,78 @@
         });
         saveChangesButton.addEventListener('click', () => sm.saveActiveProfileChanges());
         loadAllButton.addEventListener('click', () => {
+            if (sm.inspectorPreviewOnly) {
+                return;
+            }
             if (!sm.canProceedWithApplyAction()) {
                 return;
             }
             sm.applyAll(entry.data);
         });
+        if (isHistoryVersionMode && currentState) {
+            const summaryContainer = sm.createElementWithClassList('div', 'category', 'sd-webui-sm-history-preview-summary');
+            const summaryHeader = sm.createElementWithClassList('div', 'sd-webui-sm-history-preview-summary-header');
+            summaryHeader.innerText = 'Changed vs current UI:';
+            summaryContainer.appendChild(summaryHeader);
+            const summaryList = sm.createElementWithClassList('div', 'sd-webui-sm-history-preview-summary-list');
+            const formatSummaryValue = (value) => {
+                if (value === undefined || value === null || value === '') {
+                    return '-';
+                }
+                if (typeof value === 'object') {
+                    return JSON.stringify(value);
+                }
+                return `${value}`;
+            };
+            const formatSummaryLabel = (label) => {
+                const trimmedLabel = `${label ?? ''}`.trim();
+                const labelMap = {
+                    'Sampling method': 'Sampler',
+                    'Sampling Method': 'Sampler',
+                    'Sampling steps': 'Steps',
+                    'Sampling Steps': 'Steps',
+                    'Batch count': 'Batch Count',
+                    'Batch Count': 'Batch Count',
+                    'Batch size': 'Batch Size',
+                    'Batch Size': 'Batch Size'
+                };
+                return labelMap[trimmedLabel] || trimmedLabel;
+            };
+            const addSummaryDiffs = (currentValues, savedValues, labelResolver) => {
+                const seenKeys = new Set();
+                const orderedKeys = [...Object.keys(savedValues || {}), ...Object.keys(currentValues || {})].filter((key) => {
+                    if (seenKeys.has(key)) {
+                        return false;
+                    }
+                    seenKeys.add(key);
+                    return true;
+                });
+                for (const settingPath of orderedKeys) {
+                    const currentValue = currentValues?.[settingPath];
+                    const savedValue = savedValues?.[settingPath];
+                    if (sm.utils.areLooselyEqualValue(currentValue, savedValue)) {
+                        continue;
+                    }
+                    const label = formatSummaryLabel(labelResolver(settingPath));
+                    const summaryRow = sm.createElementWithClassList('div', 'sd-webui-sm-history-preview-summary-row');
+                    summaryRow.innerText = `• ${label}: ${formatSummaryValue(currentValue)} → ${formatSummaryValue(savedValue)}`;
+                    summaryList.appendChild(summaryRow);
+                }
+            };
+            const quickSettingLabelRenames = {
+                'sd_model_checkpoint': 'Checkpoint',
+                'sd_vae': 'VAE',
+                'CLIP_stop_at_last_layers': 'CLIP skip',
+                'sd_hypernetwork': 'Hypernetwork',
+            };
+            addSummaryDiffs((currentState.quickSettings && typeof currentState.quickSettings === 'object') ? currentState.quickSettings : {}, entry.data.quickSettings && typeof entry.data.quickSettings === 'object' ? entry.data.quickSettings : {}, (settingPath) => quickSettingLabelRenames[settingPath] || sm.getSettingLabelFromPath(settingPath));
+            addSummaryDiffs((currentState.componentSettings && typeof currentState.componentSettings === 'object') ? currentState.componentSettings : {}, (entry.data.componentSettings && typeof entry.data.componentSettings === 'object') ? entry.data.componentSettings : {}, (settingPath) => sm.getSettingLabelFromPath(settingPath));
+            if (summaryList.childNodes.length == 0) {
+                summaryList.innerText = 'No changes vs current UI';
+            }
+            summaryContainer.appendChild(summaryList);
+            sm.inspector.appendChild(summaryContainer);
+        }
         sm.inspector.appendChild(metaContainer);
         sm.inspector.appendChild(viewSettingsContainer);
         if (sm.getMode() != 'modal') {
@@ -2643,6 +2739,10 @@
         const miscQuickSettings = Object.keys(entryQuickSettings).filter(k => mandatoryQuickSettings.indexOf(k) == -1);
         function createQuickSetting(label, settingPath) {
             const quickSettingParameter = sm.createInspectorParameter(label, entryQuickSettings[settingPath], () => sm.applyQuickParameters(entryQuickSettings, settingPath), undefined, `quick/${settingPath}`);
+            if (sm.inspectorPreviewOnly) {
+                const useButton = quickSettingParameter.querySelector('.sd-webui-sm-use-button');
+                useButton?.remove?.();
+            }
             if (sm.componentMap.hasOwnProperty(settingPath)) {
                 quickSettingParameter.dataset['valueDiff'] = (sm.componentMap[settingPath].entries[0].component.instance.$$.ctx[0] == entryQuickSettings[settingPath] ? 'same' : 'changed');
             }
@@ -2908,6 +3008,10 @@
             const stickySaveButton = sm.createElementWithInnerTextAndClassList('button', 'Save Changes', 'sd-webui-sm-inspector-save-button', 'sd-webui-sm-inspector-load-button');
             stickySaveButton.title = canSaveConfigChanges ? "Save edited config settings" : "Save Changes is only available for saved configs";
             stickySaveButton.disabled = !canSaveConfigChanges;
+            if (sm.inspectorPreviewOnly) {
+                stickySaveButton.style.display = 'none';
+                loadAllButton.style.display = 'none';
+            }
             stickySaveButton.addEventListener('click', () => sm.saveActiveProfileChanges());
             stickyActionContainer.appendChild(loadAllButton);
             stickyActionContainer.appendChild(stickySaveButton);
@@ -2979,18 +3083,23 @@
         }
         const applyButton = sm.createElementWithInnerTextAndClassList('button', `Load ${label}${label.toLowerCase().endsWith('settings') ? '' : ' settings'}`, 'sd-webui-sm-inspector-wide-button', 'sd-webui-sm-inspector-load-button');
         content.appendChild(applyButton);
-        applyButton.addEventListener('click', e => {
-            if (!sm.canProceedWithApplyAction()) {
+        if (sm.inspectorPreviewOnly) {
+            applyButton.style.display = 'none';
+        }
+        else {
+            applyButton.addEventListener('click', e => {
+                if (!sm.canProceedWithApplyAction()) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    return;
+                }
+                for (const param of applyButton.parentNode.querySelectorAll('.sd-webui-sm-inspector-param:has(:checked)')) {
+                    param.apply();
+                }
                 e.stopPropagation();
                 e.preventDefault();
-                return;
-            }
-            for (const param of applyButton.parentNode.querySelectorAll('.sd-webui-sm-inspector-param:has(:checked)')) {
-                param.apply();
-            }
-            e.stopPropagation();
-            e.preventDefault();
-        });
+            });
+        }
         const isOpen = Boolean(sm.inspectorAccordionState?.[sectionLabel]);
         content.style.height = isOpen ? '100%' : '0';
         accordion.classList.toggle('open', isOpen);
@@ -3059,6 +3168,11 @@
         return button;
     };
     sm.createUseButton = function (onUse) {
+        if (sm.inspectorPreviewOnly) {
+            const previewOnlyButton = sm.createInspectorSideButton('↙️', 'Preview only', () => { });
+            previewOnlyButton.style.display = 'none';
+            return previewOnlyButton;
+        }
         return sm.createInspectorSideButton('↙️', "Apply to prompt (overrides current)", () => {
             if (!sm.canProceedWithApplyAction()) {
                 return;
