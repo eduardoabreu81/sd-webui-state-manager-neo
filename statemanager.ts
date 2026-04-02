@@ -933,6 +933,18 @@ declare let onAfterUiUpdate: (callback) => void;
         const versionNumber = Number.parseInt(`${state?.configVersionNumber ?? ''}`);
         return Number.isFinite(versionNumber) && versionNumber > 0 ? versionNumber : 1;
     };
+    sm.syncHistoryVersionContextFromSelection = function () {
+        const selectedEntries = sm.selection?.entries || [];
+        if (selectedEntries.length != 1 || !selectedEntries[0]?.data) {
+            sm.historyVersionContext = { configVersionId: '' };
+            return;
+        }
+        const selectedState = selectedEntries[0].data;
+        const selectedStateKey = `${selectedState.createdAt ?? ''}`;
+        sm.historyVersionContext = {
+            configVersionId: sm.getConfigVersionBaseId(selectedState, selectedStateKey)
+        };
+    };
     sm.getSamplerDisplayValue = function (state) {
         const generationType = `${state?.type ?? ''}`;
         const componentSettings = (state?.componentSettings && typeof state.componentSettings === 'object') ? state.componentSettings : {};
@@ -1300,10 +1312,14 @@ declare let onAfterUiUpdate: (callback) => void;
             }
         };
         const setActivePanelTab = (tab, group) => {
+            const previousTab = sm.activePanelTab;
             sm.activePanelTab = tab;
             sm.syncPanelTabButtons?.();
             sm.syncPanelTabVisibility?.();
             updateShowSavedConfigsToggleVisibility();
+            if (tab == 'history' && previousTab == 'favourites') {
+                sm.syncHistoryVersionContextFromSelection?.();
+            }
             if (group) {
                 sm.entryFilter.group = group;
                 sm.persistEntryFilterIfEnabled();
@@ -1902,6 +1918,13 @@ declare let onAfterUiUpdate: (callback) => void;
             gearButton.tabIndex = 0;
             gearButton.setAttribute('role', 'button');
             entry.appendChild(gearButton);
+            const restoreButton = sm.createElementWithClassList('div', 'sd-webui-sm-entry-restore');
+            restoreButton.innerText = 'Restore';
+            restoreButton.title = 'Restore this version';
+            restoreButton.tabIndex = 0;
+            restoreButton.setAttribute('role', 'button');
+            restoreButton.style.display = 'none';
+            entry.appendChild(restoreButton);
             const footer = sm.createElementWithClassList('div', 'footer');
             footer.appendChild(sm.createElementWithClassList('div', 'date'));
             footer.appendChild(sm.createElementWithClassList('div', 'time'));
@@ -1995,6 +2018,22 @@ declare let onAfterUiUpdate: (callback) => void;
             if (!(event.target instanceof Element)) {
                 return;
             }
+            const restoreButton = event.target.closest('.sd-webui-sm-entry-restore');
+            if (restoreButton) {
+                event.preventDefault();
+                event.stopPropagation();
+                closeEntryGearMenu();
+                const entry = restoreButton.closest('.sd-webui-sm-entry');
+                if (!entry || !entry.data || entry.style.display == 'none') {
+                    return;
+                }
+                sm.selection.select(entry, 'single');
+                if (!sm.canProceedWithApplyAction()) {
+                    return;
+                }
+                sm.applyAll(entry.data);
+                return;
+            }
             const gearButton = event.target.closest('.sd-webui-sm-entry-gear');
             if (gearButton) {
                 event.preventDefault();
@@ -2031,6 +2070,9 @@ declare let onAfterUiUpdate: (callback) => void;
             }
             else {
                 sm.selection.select(entry, 'single');
+            }
+            if (sm.activePanelTab == 'favourites') {
+                sm.syncHistoryVersionContextFromSelection?.();
             }
         });
         entries.addEventListener('dblclick', (event) => {
@@ -2280,7 +2322,19 @@ declare let onAfterUiUpdate: (callback) => void;
         const currentEntriesPerPage = sm.getEntriesPerPage();
         const entries = sm.panelContainer.querySelector('.sd-webui-sm-entries');
         sm.ensureEntrySlotCount(currentEntriesPerPage);
-        const filteredEntries = Object.entries(sm.memoryStorage.entries.data).filter(kv => sm.entryFilter.matches(kv[1]));
+        const historyVersionContextId = `${sm.historyVersionContext?.configVersionId ?? ''}`.trim();
+        const isHistoryVersionMode = sm.activePanelTab == 'history' && sm.entryFilter.group == 'history' && historyVersionContextId.length > 0;
+        const filteredEntries = Object.entries(sm.memoryStorage.entries.data).filter(kv => {
+            const [stateKey, stateData] = kv;
+            if (isHistoryVersionMode) {
+                if (sm.entryFilter.types.indexOf(stateData.type) == -1) {
+                    return false;
+                }
+                const stateVersionId = sm.getConfigVersionBaseId(stateData, `${stateKey ?? ''}`);
+                return stateVersionId == historyVersionContextId;
+            }
+            return sm.entryFilter.matches(stateData);
+        });
         const sortBy = sm.entryFilter.sort;
         const useManualConfigSort = sm.entryFilter.group == 'favourites';
         const manualOrder = useManualConfigSort ? sm.getActiveFavouritesOrder?.() : [];
@@ -2290,6 +2344,14 @@ declare let onAfterUiUpdate: (callback) => void;
             const bState = b[1];
             const aKey = `${a[0] ?? ''}`;
             const bKey = `${b[0] ?? ''}`;
+            if (isHistoryVersionMode) {
+                const aVersionNumber = sm.getConfigVersionNumber(aState);
+                const bVersionNumber = sm.getConfigVersionNumber(bState);
+                if (aVersionNumber != bVersionNumber) {
+                    return bVersionNumber - aVersionNumber;
+                }
+                return (Number(bState.createdAt ?? b[0]) || 0) - (Number(aState.createdAt ?? a[0]) || 0);
+            }
             if (useManualConfigSort) {
                 const aIndex = manualOrderIndexes.has(aKey) ? manualOrderIndexes.get(aKey) : Number.MAX_SAFE_INTEGER;
                 const bIndex = manualOrderIndexes.has(bKey) ? manualOrderIndexes.get(bKey) : Number.MAX_SAFE_INTEGER;
@@ -2355,11 +2417,7 @@ declare let onAfterUiUpdate: (callback) => void;
             entry.classList.toggle('active', sm.selection.selectedStateKeys.has(entryStateKey));
             const creationDate = new Date(data.createdAt);
             const configName = `${data.name ?? ''}`.trim();
-            const versionNumber = Number.parseInt(`${data.configVersionNumber ?? ''}`);
-            const hasVersion = Number.isFinite(versionNumber) && versionNumber > 0;
-            const versionLabel = hasVersion ? `v${versionNumber}` : '';
-            const versionChangeSummary = `${data.configVersionChangeSummary ?? ''}`.trim();
-            const displayConfigName = [configName, versionLabel, versionChangeSummary].filter(part => part.length > 0).join(' — ');
+            const versionNumber = sm.getConfigVersionNumber(data);
             const day = creationDate.getDate().toString().padStart(2, '0');
             const month = (creationDate.getMonth() + 1).toString().padStart(2, '0');
             const year = creationDate.getFullYear().toString().padStart(2, '0');
@@ -2373,10 +2431,18 @@ declare let onAfterUiUpdate: (callback) => void;
             const fullTimestamp = `${fullDateText} ${fullTimeText}`;
             const dateElement = entry.querySelector('.date');
             const timeElement = entry.querySelector('.time');
+            const versionChangeSummary = `${data.configVersionChangeSummary ?? ''}`.trim();
+            const displayConfigName = isHistoryVersionMode
+                ? [`v${versionNumber}`, fullTimestamp, versionChangeSummary].filter(part => part.length > 0).join(' — ')
+                : configName;
             entry.querySelector('.type').innerText = `${data.type == 'txt2img' ? '🖋' : '🖼️'} ${data.type}`;
             entry.querySelector('.config-name').innerText = displayConfigName;
             entry.querySelector('.config-name').title = displayConfigName;
             entry.classList.toggle('has-config-name', displayConfigName.length > 0);
+            const restoreButton = entry.querySelector('.sd-webui-sm-entry-restore');
+            if (restoreButton) {
+                restoreButton.style.display = isHistoryVersionMode ? '' : 'none';
+            }
             dateElement.innerText = fullDateText;
             timeElement.innerText = `${hours}:${minutes}`;
             dateElement.title = fullTimestamp;
@@ -4083,6 +4149,7 @@ declare let onAfterUiUpdate: (callback) => void;
 })(window.stateManager = window.stateManager || {
     componentMap: {},
     forgeNeoSelectorMap: {},
+    historyVersionContext: { configVersionId: '' },
     activeProfileDraft: null,
     activeProfileSaveButtons: [],
     memoryStorage: {
