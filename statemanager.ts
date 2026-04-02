@@ -926,7 +926,7 @@ declare let onAfterUiUpdate: (callback) => void;
         if (explicitVersionId.length > 0) {
             return explicitVersionId;
         }
-        const fallbackId = `${stateKey || state?.createdAt ?? ''}`.trim();
+        const fallbackId = `${stateKey || (state?.createdAt ?? '')}`.trim();
         return fallbackId.length > 0 ? fallbackId : `${Date.now()}`;
     };
     sm.getConfigVersionNumber = function (state) {
