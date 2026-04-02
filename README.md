@@ -1,247 +1,184 @@
-# 💾 State Manager Neo
-
 <div align="center">
+
+# 💾 State Manager Neo
 
 [![Forge Neo](https://img.shields.io/badge/Forge-Neo-blue)](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/Version-0.0.2-blueviolet.svg)](#-whats-new)
 
-> Save and restore full UI states for Stable Diffusion WebUI Forge Neo with one click.
+> **Extension for [Stable Diffusion WebUI Forge Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)**
 
 </div>
 
-State Manager Neo lets you capture complete `txt2img` and `img2img` configurations (model, sampler, scripts, settings) and restore them instantly. Perfect for iterative workflows where you need rapid context switching.
+> **Save your full txt2img/img2img setup once, and bring it back instantly whenever you need it.**
+
+State Manager Neo lets you snapshot model, sampler, prompts, Hires settings, scripts, and other UI values.
+
+Then restore everything with one click.
+
+---
 
 ## 📋 Table of Contents
 
-• [What's New](#-whats-new)
-• [Changelog](#-changelog)
-• [Roadmap](#-roadmap)
-• [Features](#-features)
-• [Installation](#-installation)
-• [Architecture](#-architecture)
-• [Credits](#-credits)
-• [License](#-license)
+- [What's New](#-whats-new)
+- [Changelog](#-changelog)
+- [Roadmap](#-roadmap)
+- [Features](#-features)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [Credits](#-credits)
 
 ---
 
 ## 🆕 What's New
 
-### v0.0.2 — Config Versioning Patch
+### v0.0.2 - Version History UX
 
-Stability and workflow patch focused on config overwrite history and Forge Neo sampling parity.
+- **Config overwrite creates version history** in History
 
-• **Config overwrite version history** — saving over an existing config now archives the previous config state into History as a version entry
+- **History version cards are preview-first** (card click previews, Restore applies)
 
-• **Version metadata and summary** — versioned entries include version number and auto summary (e.g. sampler change or `N fields changed`)
+- **Version list is clearer** with vertical rows and compact summary
 
-• **History search coverage** — Enter-based search on History now matches broader entry metadata in addition to name/checkpoint/sampler/prompt
+- **Schedule Type support** improved in save/restore inspector coverage
 
-• **Schedule Type support** — added to Generation curated inspector and sampler-path resolution for both txt2img and img2img
+### v0.0.1 - Forge Neo Baseline
 
-### v0.0.1 — Forge Neo Baseline
+- Startup stability improvements for extension-heavy setups
 
-Initial stable release with complete state capture/restore functionality optimized for Forge Neo.
+- Sampling and batch values fixed in previews
 
-• **Event handler lazy-loading** — component collection deferred to first API call, preventing race conditions with Gradio initialization
+- Negative Prompt capture reliability improved
 
-• **Preview value fallback** — graceful handling of InputAccordion components and key variant resolution (customscript/ prefix, case variants)
-
-• **Hires CFG Scale capture** — explicit field mapping for all Hires settings including CFG Scale variants, bidirectional resolution in save/apply flows
+- Hires CFG Scale and Hires Distilled CFG Scale covered for txt2img/img2img
 
 ---
 
 ## 📖 Changelog
 
-### v0.0.2 — Config Versioning Patch
+### v0.0.2
 
-**State Management & History**
+- Save Changes on an existing config archives the previous version into History
 
-• Added frontend-only config versioning on overwrite: previous config snapshot is pushed to History before replacing current config state
+- Version entries include version number and short change summary
 
-• Added graceful version metadata fields (`configVersionId`, `configVersionNumber`, `configVersionIsCurrent`, `configVersionChangeSummary`, `configVersionTimestamp`) with fallback defaults for existing entries
+- History now supports cleaner version browsing and restore flow
 
-• Added lightweight change summary generation with sampler-aware label (`sampler: old -> new`) and fallback (`N fields changed`)
+- Search and sampler-related mapping coverage were improved
 
-• Kept existing History tab layout; entries now display version/summaries in existing name line
+### v0.0.1
 
-**Search & Sampler Coverage**
+- Fixed initialization race issues on Forge Neo
 
-• History search now includes broader text metadata extraction for entries while preserving Enter-trigger behavior
+- Fixed undefined preview values in key generation fields
 
-• Added `Schedule Type` to curated Generation section and resolver aliases for `customscript/sampler.py/...` paths in txt2img/img2img
-
-**Files Modified:** statemanager.ts, javascript/statemanager.js, README.md
-
-### v0.0.1 — Forge Neo Baseline
-
-**Infrastructure & Bug Fixes**
-
-• **Lazy-load component collection** — moved from `on_app_started` callback to first API request in `/componentids` endpoint, eliminating "event handler received 0 inputs" errors
-
-• **Fallback value resolution** — enhanced component value extraction with chain: `props.value` → `instance.$$.ctx[0]` → DOM element extraction; handles InputAccordion + customscript components
-
-• **Hires CFG Scale save/restore** — added explicit resolver for component path variants; wired into both `getComponentSettings()` (capture) and `applyComponentSettings()` (restore); added UI fields for txt2img and img2img sections
-
-• **Preview formatter** — improved handling of undefined display values; generates alternative key paths (case, customscript prefix) before failing; shows `-` fallback instead of "undefined"
-
-**Files Modified:** statemanager.ts, javascript/statemanager.js, scripts/api.py
+- Added missing Hires CFG fields to capture/restore flow
 
 ---
 
 ## 🗺️ Roadmap
 
-### v0.0.2 — Config Versioning Patch ✅
+### v0.0.2 *(complete)* ✅
 
-• Config overwrite archived as versioned History entry ✅
+### v0.1.0 *(planned)*
 
-• Version label + summary in existing entry line ✅
+- Expanded field coverage (Refiner and script-specific values)
 
-• History metadata search coverage via Enter ✅
+- Better metadata options for configs
 
-• Schedule Type coverage for sampler mappings ✅
+### v0.2.0 *(planned)*
 
-### v0.0.1 — Forge Neo Baseline ✅
+- Pinned/favorite improvements
 
-• Forge Neo compatibility baseline ✅
+- Config import/export
 
-• Event handler stability fix ✅
-
-• Component value fallback chain ✅
-
-• Hires settings coverage ✅
-
-### v0.1.0 — Enhanced Coverage (planned)
-
-• Extended field mapping for Refiner settings
-
-• Script-specific state capture
-
-• Custom metadata tagging for configs
-
-### v0.2.0 — UI Polish (planned)
-
-• Favorites / pinned configs
-
-• Config import/export
-
-• Comparison view (diff between states)
-
-### v1.0.0 — First Stable Release (planned)
-
-• Full field coverage for all extension scenarios
-
-• Performance optimization for large config lists
-
-• Comprehensive test suite
+- Better side-by-side comparison tools
 
 ---
 
 ## 🎯 Features
 
-• **Full state capture** — saves complete txt2img/img2img configurations in one click
-• **Instant restore** — apply saved states fully or selectively (cherry-pick fields)
-• **History tracking** — revisit previous states (configurable history depth)
-• **Reusable configs** — save named configurations for repetitive workflows
-• **Quick menu** — fast access to frequently-used configs from toolbar
-• **Modal + docked views** — full inspector in modal or compact sidebar panel
-• **Smart filtering** — search, sort, filter configs; optional persistent filter state
-• **Auto-apply on startup** — designate a config to load automatically when WebUI launches
-• **Draft editing** — edit configs with `Save Changes` to preserve live settings
-• **Batch operations** — select multiple configs for cleanup/organization
-• **IndexedDB persistence** — reliable client-side storage with optional file sync
-• **Fallback resolution** — gracefully handles component key variants (case, prefix) and missing values
+### Save and Restore
+
+- Save complete txt2img or img2img state in one click
+
+- Restore full config or apply selected fields only
+
+- Works well for frequent style/project switching
+
+### Config Workflow
+
+- Named reusable configs
+
+- Search and filter support
+
+- Startup auto-apply option
+
+- Save Changes flow for iterative edits
+
+### History Workflow
+
+- Version-aware history for configs
+
+- Preview selected version before applying
+
+- Restore exactly the version you want
 
 ---
 
 ## 📦 Installation
 
-### For Forge Neo
+### Inside Forge Neo
 
-1. Open Stable Diffusion WebUI Forge Neo.
-2. Navigate to **Extensions** → **Install from URL**.
-3. Paste the repository URL:
+1. Open Forge Neo and go to **Extensions**.
+
+2. Click **Install from URL**.
+
+3. Paste:
 
 ```text
 https://github.com/eduardoabreu81/sd-webui-state-manager-neo
 ```
 
-4. Click **Install** and reload the WebUI.
+4. Click **Install** and reload WebUI.
 
-### Requirements
-
-- ✅ [Stable Diffusion WebUI Forge Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)
-- ✅ Python 3.10+
-
-> ⚠️ **Important**: This extension is optimized exclusively for Forge Neo. It will not work correctly on Automatic1111 or Forge Classic. For other environments, use the original [sd-webui-state-manager](https://github.com/SenshiSentou/sd-webui-state-manager).
+> ⚠️ This extension is for **Forge Neo**.
+>
+> For other environments, use the original [sd-webui-state-manager](https://github.com/SenshiSentou/sd-webui-state-manager).
 
 ---
 
-## 🏗️ Architecture
+## 🚀 Quick Start
 
-### Tech Stack
+1. Set up your generation screen the way you want.
 
-| Component | Technology |
-|-----------|-----------|
-| **Frontend** | TypeScript (ES2021 target) compiled to JavaScript |
-| **Runtime UI** | Gradio components + IndexedDB storage |
-| **Styling** | CSS3 (custom theme support) |
-| **Backend** | Python FastAPI + Pydantic |
-| **Build** | TypeScript compiler (tsc) |
+2. Open State Manager.
 
-### File Structure
+3. Save a config.
 
-```
-statemanager.ts           → Frontend state logic (3900+ lines)
-javascript/statemanager.js → Compiled runtime file
-style.css                 → UI styling and layout
-scripts/api.py            → FastAPI endpoints + Gradio callbacks
-docs/PROJECT_LOG.md       → Development log
-```
+4. Change your UI settings.
 
-### Key Concepts
-
-- **Lazy-loading** — component collection deferred until first /componentids request
-- **Component mapping** — Forge Neo components resolved via multiple fallback strategies
-- **Value resolution** — fallback chain for extracting values from Svelte component contexts and DOM
-- **Live state synchronization** — real-time UI state capture without blocking interaction
+5. Re-open the saved config and restore.
 
 ---
 
 ## 📄 Credits
 
-### Original Projects — Foundation & Continued Development
+**[SenshiSentou/sd-webui-state-manager](https://github.com/SenshiSentou/sd-webui-state-manager)**
 
-This extension builds on exceptional prior work:
+Original architecture and save/restore foundation.
 
-**[SenshiSentou/sd-webui-state-manager](https://github.com/SenshiSentou/sd-webui-state-manager)** — Original architecture and core save/restore logic.
+**[dane-9/sd-webui-state-manager-continued](https://github.com/dane-9/sd-webui-state-manager-continued)**
 
-**[dane-9/sd-webui-state-manager-continued](https://github.com/dane-9/sd-webui-state-manager-continued)** — Maintenance and improvements before Neo focus.
+Continued maintenance before Neo-specific focus.
 
-Please consider starring these repositories to support the original authors.
-
-### Forge Neo Fork — Compatibility & Modern Fixes
-
-[State Manager Neo](https://github.com/eduardoabreu81/sd-webui-state-manager-neo) by [Eduardo Abreu](https://github.com/eduardoabreu81)
-
-• Full compatibility with Forge Neo
-• Event handler stability (lazy-loading pattern)
-• Hires settings capture expansion
-• Component key variant resolution
-• Preview formatter fallback chains
-
-### Special Thanks
-
-- [Forge Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo) by [Haoming02](https://github.com/Haoming02) — excellent base for modern Stable Diffusion workflows
-- Stable Diffusion community — feedback and bug reports
+**[Forge Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)** by [Haoming02](https://github.com/Haoming02)
 
 ---
 
 ## 📜 License
 
-MIT License. See [LICENSE](LICENSE) for full text.
-
-Made with ❤️ for the Stable Diffusion community.
+MIT - see [LICENSE](LICENSE)
 
 ---
 
