@@ -921,7 +921,86 @@ declare let onAfterUiUpdate: (callback) => void;
         sm.updateStorage();
         return stateClone;
     };
-    sm.saveActiveProfileChanges = function () {
+    sm.getConfigVersionBaseId = function (state, stateKey = '') {
+        const explicitVersionId = `${state?.configVersionId ?? ''}`.trim();
+        if (explicitVersionId.length > 0) {
+            return explicitVersionId;
+        }
+        const fallbackId = `${stateKey || state?.createdAt ?? ''}`.trim();
+        return fallbackId.length > 0 ? fallbackId : `${Date.now()}`;
+    };
+    sm.getConfigVersionNumber = function (state) {
+        const versionNumber = Number.parseInt(`${state?.configVersionNumber ?? ''}`);
+        return Number.isFinite(versionNumber) && versionNumber > 0 ? versionNumber : 1;
+    };
+    sm.getSamplerDisplayValue = function (state) {
+        const generationType = `${state?.type ?? ''}`;
+        const componentSettings = (state?.componentSettings && typeof state.componentSettings === 'object') ? state.componentSettings : {};
+        const candidatePaths = [
+            `${generationType}/Sampling method`,
+            `${generationType}/Sampling Method`,
+            `customscript/sampler.py/${generationType}/Sampling Method`
+        ];
+        for (const candidatePath of candidatePaths) {
+            if (!componentSettings.hasOwnProperty(candidatePath)) {
+                continue;
+            }
+            const samplerValue = `${componentSettings[candidatePath] ?? ''}`.trim();
+            if (samplerValue.length > 0) {
+                return samplerValue;
+            }
+        }
+        return `${state?.generationSettings?.sampler ?? ''}`.trim();
+    };
+    sm.buildStateComparableMap = function (state) {
+        const comparableMap = {};
+        const appendComparableValues = (prefix, values) => {
+            if (!values || typeof values !== 'object') {
+                return;
+            }
+            for (const [key, value] of Object.entries(values)) {
+                comparableMap[`${prefix}/${key}`] = `${value ?? ''}`;
+            }
+        };
+        appendComparableValues('quick', state?.quickSettings);
+        appendComparableValues('component', state?.componentSettings);
+        return comparableMap;
+    };
+    sm.getStateChangeDetails = function (previousState, nextState) {
+        const previousComparable = sm.buildStateComparableMap(previousState);
+        const nextComparable = sm.buildStateComparableMap(nextState);
+        let changedFieldsCount = 0;
+        const allComparableKeys = new Set([...Object.keys(previousComparable), ...Object.keys(nextComparable)]);
+        for (const comparableKey of allComparableKeys) {
+            if (`${previousComparable[comparableKey] ?? ''}` !== `${nextComparable[comparableKey] ?? ''}`) {
+                changedFieldsCount++;
+            }
+        }
+        const previousSampler = sm.getSamplerDisplayValue(previousState);
+        const nextSampler = sm.getSamplerDisplayValue(nextState);
+        let summary = '';
+        if (previousSampler.length > 0 && nextSampler.length > 0 && previousSampler !== nextSampler) {
+            summary = `sampler: ${previousSampler} -> ${nextSampler}`;
+        }
+        else {
+            summary = `${changedFieldsCount} field${changedFieldsCount == 1 ? '' : 's'} changed`;
+        }
+        return {
+            changedFieldsCount,
+            summary
+        };
+    };
+    sm.createConfigVersionHistoryEntry = function (previousState, versionId, versionNumber, changeSummary) {
+        const historyEntry = JSON.parse(JSON.stringify(previousState || {}));
+        historyEntry.groups = sm.getGroupsWithFavouriteState(previousState?.groups || ['history'], false);
+        historyEntry.configVersionId = versionId;
+        historyEntry.configVersionNumber = versionNumber;
+        historyEntry.configVersionIsCurrent = false;
+        historyEntry.configVersionChangeSummary = `${changeSummary ?? ''}`.trim();
+        historyEntry.configVersionTimestamp = Date.now();
+        return historyEntry;
+    };
+    sm.saveActiveProfileChanges = async function () {
         if (sm.selection.entries.length != 1) {
             return;
         }
@@ -936,6 +1015,7 @@ declare let onAfterUiUpdate: (callback) => void;
         }
         const entryStateKey = `${entry.data.createdAt ?? ''}`;
         const wasFavourite = (entry.data.groups?.indexOf('favourites') ?? -1) > -1;
+        const previousState = JSON.parse(JSON.stringify(entry.data || {}));
         const assignDraftData = (targetState, baseGroups) => {
             const finalName = `${draft.name ?? ''}`.trim();
             if (finalName.length > 0) {
@@ -949,8 +1029,43 @@ declare let onAfterUiUpdate: (callback) => void;
                 checkboxes: { ...(draft.inspectorState.checkboxes || {}) }
             };
         };
-        assignDraftData(entry.data, entry.data.groups || []);
-        const isFavourite = (entry.data.groups?.indexOf('favourites') ?? -1) > -1;
+        let updatedState = null;
+        try {
+            updatedState = await sm.getCurrentState(entry.data.type);
+        }
+        catch (e) {
+            sm.utils.logResponseError("[State Manager] Failed to collect current UI state for config overwrite", e);
+            return;
+        }
+        if (!updatedState || typeof updatedState !== 'object') {
+            return;
+        }
+        assignDraftData(updatedState, entry.data.groups || []);
+        updatedState.createdAt = entry.data.createdAt;
+        const isFavourite = (updatedState.groups?.indexOf('favourites') ?? -1) > -1;
+        const configVersionId = sm.getConfigVersionBaseId(entry.data, entryStateKey);
+        const previousVersionNumber = sm.getConfigVersionNumber(entry.data);
+        const changeDetails = sm.getStateChangeDetails(previousState, updatedState);
+        const shouldCreateVersionHistory = wasFavourite && isFavourite && changeDetails.changedFieldsCount > 0;
+        if (shouldCreateVersionHistory) {
+            const historyVersionEntry = sm.createConfigVersionHistoryEntry(previousState, configVersionId, previousVersionNumber, changeDetails.summary);
+            sm.upsertState(historyVersionEntry);
+            updatedState.configVersionId = configVersionId;
+            updatedState.configVersionNumber = previousVersionNumber + 1;
+            updatedState.configVersionIsCurrent = true;
+            updatedState.configVersionChangeSummary = changeDetails.summary;
+            updatedState.configVersionTimestamp = Date.now();
+        }
+        else {
+            const hasExistingVersionId = `${entry.data?.configVersionId ?? ''}`.trim().length > 0;
+            updatedState.configVersionId = hasExistingVersionId ? `${entry.data.configVersionId}` : configVersionId;
+            updatedState.configVersionNumber = sm.getConfigVersionNumber(entry.data);
+            updatedState.configVersionIsCurrent = isFavourite && Boolean(entry.data?.configVersionIsCurrent ?? wasFavourite);
+            updatedState.configVersionChangeSummary = `${entry.data?.configVersionChangeSummary ?? ''}`;
+            updatedState.configVersionTimestamp = Number(entry.data?.configVersionTimestamp ?? entry.data?.createdAt ?? Date.now());
+        }
+        sm.memoryStorage.entries.data[entryStateKey] = updatedState;
+        entry.data = updatedState;
         if (!wasFavourite && isFavourite) {
             sm.appendFavouritesOrderKey?.(entryStateKey);
         }
@@ -2239,6 +2354,11 @@ declare let onAfterUiUpdate: (callback) => void;
             entry.classList.toggle('active', sm.selection.selectedStateKeys.has(entryStateKey));
             const creationDate = new Date(data.createdAt);
             const configName = `${data.name ?? ''}`.trim();
+            const versionNumber = Number.parseInt(`${data.configVersionNumber ?? ''}`);
+            const hasVersion = Number.isFinite(versionNumber) && versionNumber > 0;
+            const versionLabel = hasVersion ? `v${versionNumber}` : '';
+            const versionChangeSummary = `${data.configVersionChangeSummary ?? ''}`.trim();
+            const displayConfigName = [configName, versionLabel, versionChangeSummary].filter(part => part.length > 0).join(' — ');
             const day = creationDate.getDate().toString().padStart(2, '0');
             const month = (creationDate.getMonth() + 1).toString().padStart(2, '0');
             const year = creationDate.getFullYear().toString().padStart(2, '0');
@@ -2253,9 +2373,9 @@ declare let onAfterUiUpdate: (callback) => void;
             const dateElement = entry.querySelector('.date');
             const timeElement = entry.querySelector('.time');
             entry.querySelector('.type').innerText = `${data.type == 'txt2img' ? '🖋' : '🖼️'} ${data.type}`;
-            entry.querySelector('.config-name').innerText = configName;
-            entry.querySelector('.config-name').title = configName;
-            entry.classList.toggle('has-config-name', configName.length > 0);
+            entry.querySelector('.config-name').innerText = displayConfigName;
+            entry.querySelector('.config-name').title = displayConfigName;
+            entry.classList.toggle('has-config-name', displayConfigName.length > 0);
             dateElement.innerText = fullDateText;
             timeElement.innerText = `${hours}:${minutes}`;
             dateElement.title = fullTimestamp;
