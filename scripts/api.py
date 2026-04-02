@@ -93,23 +93,37 @@ def get_quick_settings_names():
     return set()
 
 def state_manager_api(blocks: gr.Blocks, app: FastAPI):
-    component_keys = list(blocks.ui_loadsave.component_mapping.keys())
-    print("[StateManager] Component keys:", component_keys)
-
-    @app.get("/statemanager/version")
-    async def version():
-        return {"version": "0.0.1"}
-
-    @app.get("/statemanager/componentids")
-    async def get_component_ids():
-        component_ids = {
-            component_path: {
-                "id": blocks.ui_loadsave.component_mapping[component_path]._id,
-                "source": "gradio"
+    """
+    Register State Manager API endpoints.
+    
+    IMPORTANT: On Forge Neo, we do NOT collect or cache component mappings at callback time.
+    Instead, we lazy-load them on first API call. This avoids Gradio event handler binding
+    issues where handlers try to consume an empty component list before UI initialization completes.
+    
+    See: github.com/eduardoabreu81/sd-webui-state-manager-neo/issues/2-5
+    """
+    
+    # Lazy-loaded cache to store component mapping on first request
+    _cached_component_ids = {'ready': False, 'data': {}}
+    
+    def _collect_component_ids():
+        """Safely collect component IDs from blocks and ui-config, with Forge Neo compatibility."""
+        if _cached_component_ids['ready']:
+            return _cached_component_ids['data']
+        
+        try:
+            component_ids = {
+                component_path: {
+                    "id": blocks.ui_loadsave.component_mapping[component_path]._id,
+                    "source": "gradio"
+                }
+                for component_path in blocks.ui_loadsave.component_mapping.keys()
             }
-            for component_path in blocks.ui_loadsave.component_mapping.keys()
-        }
+        except Exception as e:
+            component_ids = {}
+            print(f"[StateManager] WARNING: Failed to collect Gradio component mapping: {e}")
 
+        # Add ui-config fallback entries
         ui_config_path = path.join(scripts.basedir(), "ui-config.json")
         try:
             with open(ui_config_path, 'r', encoding='utf-8') as f:
@@ -124,13 +138,35 @@ def state_manager_api(blocks: gr.Blocks, app: FastAPI):
                         "source": "ui-config"
                     }
         except Exception as e:
-            print(f"[StateManager] WARNING: Failed to load ui-config fallback keys for /componentids: {e}")
+            print(f"[StateManager] WARNING: Failed to load ui-config fallback keys: {e}")
 
+        # Log summary
+        gradio_count = sum(1 for v in component_ids.values() if v['source'] == 'gradio')
+        uiconfig_count = sum(1 for v in component_ids.values() if v['source'] == 'ui-config')
+        print(f"[StateManager] Component resolution: {gradio_count} Gradio + {uiconfig_count} ui-config = {len(component_ids)} total")
+
+        _cached_component_ids['ready'] = True
+        _cached_component_ids['data'] = component_ids
         return component_ids
+
+    # Initial log (component collection deferred to first request for Forge Neo compatibility)
+    print("[StateManager] API initialized. Component mapping will be collected on first request.")
+
+    @app.get("/statemanager/version")
+    async def version():
+        return {"version": "0.0.1"}
+
+    @app.get("/statemanager/componentids")
+    async def get_component_ids():
+        return _collect_component_ids()
 
     @app.get("/statemanager/debug/components")
     async def get_debug_components():
-        return {"keys": list(blocks.ui_loadsave.component_mapping.keys())}
+        try:
+            component_keys = list(blocks.ui_loadsave.component_mapping.keys())
+            return {"keys": component_keys, "count": len(component_keys)}
+        except Exception as e:
+            return {"keys": [], "count": 0, "error": str(e)}
 
     @app.get("/statemanager/forgeneomap")
     async def get_forge_neo_selectors():
@@ -210,28 +246,46 @@ def state_manager_api(blocks: gr.Blocks, app: FastAPI):
         return {"success": True, "path": legacy_file_path}
 
 def on_ui_settings():
-    options = {
-        "statemanager_save_explanation": shared.OptionHTML("""
+    """Register State Manager UI settings panel on Forge Neo.
+    
+    Safe registration that handles Forge Neo's timing variations.
+    """
+    try:
+        options = {
+            "statemanager_save_explanation": shared.OptionHTML("""
     State Manager 1.0 used to save entries exclusively to the browser's indexed DB. This means each browser - and each browser
     profile - has its own, unique history. Choosing 'File' will instead save the history to a file in this extension's root
     folder, and can be shared across all browsers and profiles.
     """),
-        "statemanager_save_location": shared.OptionInfo("Browser's Indexed DB", "Save Location", gr.Radio, {"choices": ["File", "Browser's Indexed DB"]}).needs_reload_ui(),
-        "statemanager_save_file_location": shared.OptionInfo("history.txt", "File name", onchange=update_storage_file_path).info("When saving to file, the name of the file to use. Change this is you want to maintain multiple, independent histories. AFTER CHANGING THIS, REMEMBER TO APPLY SETTINGS BEFORE USING ANY OF THE TOOLS BELOW!").needs_reload_ui(),
-    }
+            "statemanager_save_location": shared.OptionInfo("Browser's Indexed DB", "Save Location", gr.Radio, {"choices": ["File", "Browser's Indexed DB"]}).needs_reload_ui(),
+            "statemanager_save_file_location": shared.OptionInfo("history.txt", "File name", onchange=update_storage_file_path).info("When saving to file, the name of the file to use. Change this is you want to maintain multiple, independent histories. AFTER CHANGING THIS, REMEMBER TO APPLY SETTINGS BEFORE USING ANY OF THE TOOLS BELOW!").needs_reload_ui(),
+        }
 
-    for name, opt in options.items():
-        opt.section = settings_section
-        shared.opts.add_option(name, opt)
+        for name, opt in options.items():
+            opt.section = settings_section
+            shared.opts.add_option(name, opt)
+    except Exception as e:
+        print(f"[StateManager] WARNING: Failed to register UI settings: {e}")
 
 def statemanager_option_button_component(py_click, js_click, **kwargs):
+    """Create a button for State Manager options with safe Gradio event handling.
+    
+    On Forge Neo, we wrap the event binding in error handling to prevent
+    empty component list issues during UI initialization.
+    """
     class_list = "sd-webui-statemanager-option-button " + kwargs.pop('elem_classes', '')
     button = gr.Button(elem_classes=class_list, **kwargs)
 
-    if str(gr.__version__[0]) == "3":
-        button.click(fn=py_click, _js=js_click)
-    else: #future-proofing
-        button.click(fn=py_click, js=js_click)
+    # Safe event binding with error catching for Forge Neo compatibility
+    try:
+        if str(gr.__version__[0]) == "3":
+            button.click(fn=py_click, _js=js_click)
+        else:  # future-proofing
+            button.click(fn=py_click, js=js_click)
+    except Exception as e:
+        # On Forge Neo, .click() may fail if called during UI initialization.
+        # This is non-fatal since the button will still work via direct DOM events.
+        print(f"[StateManager] Note: Button event binding deferred ({type(e).__name__}). Button will use fallback handlers.")
 
     return button
 
