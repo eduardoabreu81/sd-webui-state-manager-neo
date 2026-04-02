@@ -1,4 +1,6 @@
 <div align="center">
+  <img src=".github/logo.png" alt="State Manager Neo"/>
+</div>
 
 # 💾 State Manager Neo
 
@@ -8,8 +10,6 @@
 [![Version](https://img.shields.io/badge/Version-0.0.2-blueviolet.svg)](#-whats-new)
 
 > **Extension for [Stable Diffusion WebUI Forge Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)**
-
-</div>
 
 Save your full txt2img/img2img setup once — model, sampler, prompts, Hires settings, scripts, and all UI values — and bring it back instantly whenever you need it.
 
