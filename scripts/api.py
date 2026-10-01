@@ -154,7 +154,7 @@ def state_manager_api(blocks: gr.Blocks, app: FastAPI):
 
     @app.get("/statemanager/version")
     async def version():
-        return {"version": "0.0.1"}
+        return {"version": "0.0.3"}
 
     @app.get("/statemanager/componentids")
     async def get_component_ids():

@@ -14,4 +14,8 @@ docs/PROJECT_LOG.md
 
 # Internal agent documentation
 AGENTS.md
+docs/superpowers/
+
+# Generated code index
+.codegraph/
 

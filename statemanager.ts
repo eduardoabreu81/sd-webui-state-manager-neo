@@ -9,12 +9,15 @@ declare let onAfterUiUpdate: (callback) => void;
 (function (sm) {
     // https://github.com/DVLP/localStorageDB - Allows use of indexedDB with a simple localStorage-like wrapper
     // @ts-ignore
-    !function () { var s, c, e = "undefined" != typeof window ? window : {}, t = e.indexedDB || e.mozIndexedDB || e.webkitIndexedDB || e.msIndexedDB; "undefined" == typeof window || t ? ((t = t.open("ldb", 1)).onsuccess = function (e) { s = this.result; }, t.onerror = function (e) { console.error("indexedDB request error"), console.log(e); }, t = { get: (c = { ready: !(t.onupgradeneeded = function (e) { s = null, e.target.result.createObjectStore("s", { keyPath: "k" }).transaction.oncomplete = function (e) { s = e.target.db; }; }), get: function (e, t) { s ? s.transaction("s").objectStore("s").get(e).onsuccess = function (e) { e = e.target.result && e.target.result.v || null; t(e); } : setTimeout(function () { c.get(e, t); }, 50); }, set: function (t, n, o) { if (s) {
+    !function () { var s, c, e = "undefined" != typeof window ? window : {}, t = e.indexedDB || e.mozIndexedDB || e.webkitIndexedDB || e.msIndexedDB; "undefined" == typeof window || t ? ((t = t.open("ldb", 1)).onsuccess = function (e) { s = this.result; }, t.onerror = function (e) { console.error("indexedDB request error"), console.log(e); }, t = { get: (c = { ready: !(t.onupgradeneeded = function (e) { s = null, e.target.result.createObjectStore("s", { keyPath: "k" }).transaction.oncomplete = function (e) { s = e.target.db; }; }), get: function (e, t) { s ? s.transaction("s").objectStore("s").get(e).onsuccess = function (e) { e = e.target.result && e.target.result.v || null; t(e); } : setTimeout(function () { c.get(e, t); }, 50); }, set: function (t, n, o, onError) { if (s) {
                 let e = s.transaction("s", "readwrite");
-                e.oncomplete = function (e) { "Function" === {}.toString.call(o).slice(8, -1) && o(); }, e.objectStore("s").put({ k: t, v: n }), e.commit();
+                e.oncomplete = function () { "Function" === {}.toString.call(o).slice(8, -1) && o(); };
+                e.onerror = e.onabort = () => onError && onError(e.error || new Error("IndexedDB write failed"));
+                e.objectStore("s").put({ k: t, v: n });
+                if (typeof e.commit == "function") { e.commit(); }
             }
             else
-                setTimeout(function () { c.set(t, n, o); }, 50); }, delete: function (e, t) { s ? s.transaction("s", "readwrite").objectStore("s").delete(e).onsuccess = function (e) { t && t(); } : setTimeout(function () { c.delete(e, t); }, 50); }, list: function (t) { s ? s.transaction("s").objectStore("s").getAllKeys().onsuccess = function (e) { e = e.target.result || null; t(e); } : setTimeout(function () { c.list(t); }, 50); }, getAll: function (t) { s ? s.transaction("s").objectStore("s").getAll().onsuccess = function (e) { e = e.target.result || null; t(e); } : setTimeout(function () { c.getAll(t); }, 50); }, clear: function (t) { s ? s.transaction("s", "readwrite").objectStore("s").clear().onsuccess = function (e) { t && t(); } : setTimeout(function () { c.clear(t); }, 50); } }).get, set: c.set, delete: c.delete, list: c.list, getAll: c.getAll, clear: c.clear }, sm.ldb = t, "undefined" != typeof module && (module.exports = t)) : console.error("indexDB not supported"); }();
+                setTimeout(function () { c.set(t, n, o, onError); }, 50); }, delete: function (e, t) { s ? s.transaction("s", "readwrite").objectStore("s").delete(e).onsuccess = function (e) { t && t(); } : setTimeout(function () { c.delete(e, t); }, 50); }, list: function (t) { s ? s.transaction("s").objectStore("s").getAllKeys().onsuccess = function (e) { e = e.target.result || null; t(e); } : setTimeout(function () { c.list(t); }, 50); }, getAll: function (t) { s ? s.transaction("s").objectStore("s").getAll().onsuccess = function (e) { e = e.target.result || null; t(e); } : setTimeout(function () { c.getAll(t); }, 50); }, clear: function (t) { s ? s.transaction("s", "readwrite").objectStore("s").clear().onsuccess = function (e) { t && t(); } : setTimeout(function () { c.clear(t); }, 50); } }).get, set: c.set, delete: c.delete, list: c.list, getAll: c.getAll, clear: c.clear }, sm.ldb = t, "undefined" != typeof module && (module.exports = t)) : console.error("indexDB not supported"); }();
     const app = gradioApp();
     const looselyEqualUIValues = new Set([null, undefined, "", "None"]);
     const entriesPerPage = 25;
@@ -38,6 +41,8 @@ declare let onAfterUiUpdate: (callback) => void;
     sm.lastUsedState = null;
     sm.quickMenuSelectedStateKey = null;
     sm.hasAppliedStartupConfig = false;
+    sm.componentMapReady = false;
+    sm.storageLoadFailed = false;
     sm.forceHistoryVersionLayout = false;
     sm.activePanelTab = 'history';
     sm.uiSettings = {
@@ -694,6 +699,7 @@ declare let onAfterUiUpdate: (callback) => void;
         sm.syncQuickConfigApplyButtonState?.();
     };
     sm.canProceedWithApplyAction = function () {
+        if (sm.isApplyingConfig) return false;
         if (!sm.uiSettings.preventApplyWithUnsavedConfigEdits) {
             return true;
         }
@@ -797,12 +803,12 @@ declare let onAfterUiUpdate: (callback) => void;
             updateStorageDebounceHandle = null;
         }
         if (delayMs <= 0) {
-            sm.updateStorage();
+            sm.updateStorage().catch(() => {});
             return;
         }
         updateStorageDebounceHandle = window.setTimeout(() => {
             updateStorageDebounceHandle = null;
-            sm.updateStorage();
+            sm.updateStorage().catch(() => {});
         }, delayMs);
     };
     sm.getNormalisedInspectorState = function (state) {
@@ -920,7 +926,7 @@ declare let onAfterUiUpdate: (callback) => void;
         if ((stateClone.groups?.indexOf('favourites') ?? -1) > -1) {
             sm.appendFavouritesOrderKey?.(`${stateClone.createdAt}`);
         }
-        sm.updateStorage();
+        sm.updateStorage().catch(() => {});
         return stateClone;
     };
     sm.getConfigVersionBaseId = function (state, stateKey = '') {
@@ -1103,7 +1109,7 @@ declare let onAfterUiUpdate: (callback) => void;
             && savedConfigVersionId.length > 0
             && viewedConfigVersionId == savedConfigVersionId;
         sm.activeProfileDraft = null;
-        sm.updateStorage();
+        sm.updateStorage().catch(() => {});
         sm.updateEntryIndicators(entry);
         sm.updateEntries();
         sm.updateInspector();
@@ -1247,37 +1253,8 @@ declare let onAfterUiUpdate: (callback) => void;
             checkbox: svelteClassFromSelector('input[type=checkbox]'),
             prompt: svelteClassFromSelector('#txt2img_prompt label')
         };
-        const defaultQuickSettingSaveButtonText = 'Save Current UI as Config';
-        const quickSettingSaveButton = sm.createElementWithInnerTextAndClassList('button', defaultQuickSettingSaveButtonText, 'sd-webui-sm-nav-save-button', 'sd-webui-sm-nav-save-current-config-button', 'lg', 'secondary', 'gradio-button', sm.svelteClasses.button);
-        quickSettingSaveButton.id = 'sd-webui-sm-quicksettings-button-save';
-        quickSettingSaveButton.title = "Save current UI settings as a config";
-        sm.quickSettingSaveButton = quickSettingSaveButton;
-        const showQuickSettingSaveButtonResult = (success) => {
-            quickSettingSaveButton.innerText = success ? 'Saved' : 'Save Failed';
-            quickSettingSaveButton.classList.toggle('sd-webui-sm-shake', !success);
-            setTimeout(() => {
-                quickSettingSaveButton.innerText = defaultQuickSettingSaveButtonText;
-                quickSettingSaveButton.classList.remove('sd-webui-sm-shake');
-            }, 1600);
-        };
-        quickSettingSaveButton.addEventListener('click', async () => {
-            const generationType = sm.utils.getCurrentGenerationTypeFromUI();
-            if (generationType != null) {
-                const currentState = await sm.getCurrentState(generationType);
-                currentState.name = "Saved UI " + new Date().toISOString().replace('T', ' ').replace(/\.\d+Z/, '');
-                currentState.isUiSaveConfig = true;
-                const savedUiPreviewPath = sm.getSavedUiPreviewImagePath();
-                if (savedUiPreviewPath) {
-                    currentState.preview = savedUiPreviewPath;
-                }
-                sm.saveState(currentState, 'favourites');
-                showQuickSettingSaveButtonResult(true);
-                sm.updateEntries();
-            }
-            else {
-                showQuickSettingSaveButtonResult(false);
-            }
-        });
+        const quickSaveControls = sm.createQuickConfigSaveControls();
+        const quickSettingSaveButton = quickSaveControls.button;
         sm.panelContainer = sm.createElementWithClassList('div', 'sd-webui-sm-panel-container');
         const panel = sm.createElementWithClassList('div', 'sd-webui-sm-side-panel');
         sm.sidePanel = panel;
@@ -1305,8 +1282,7 @@ declare let onAfterUiUpdate: (callback) => void;
                 sm.api.post("exportlegacy", { contents: JSON.stringify(sm.legacyData) })
                     .then(response => {
                     if (!sm.utils.isValidResponse(response, 'success', 'path') || !response.success) {
-                        Promise.reject(response);
-                        return;
+                        throw response;
                     }
                     alert(`Success! The save data was succesfully exported to ${response.path}`);
                 })
@@ -1445,6 +1421,10 @@ declare let onAfterUiUpdate: (callback) => void;
             }
         };
         nav.appendChild(navTabs);
+        nav.appendChild(quickSaveControls.form);
+        nav.appendChild(sm.createConfigApplyFeedback());
+        const importControls = sm.createConfigImportControls();
+        nav.appendChild(importControls.form);
         // Entry container
         const entryContainer = sm.createElementWithClassList('div', 'sd-webui-sm-entry-container');
         // Search + pagination
@@ -1513,6 +1493,7 @@ declare let onAfterUiUpdate: (callback) => void;
         }
         filterRow.appendChild(createFilterToggle('txt2img'));
         filterRow.appendChild(createFilterToggle('img2img'));
+        filterRow.appendChild(importControls.button);
         showSavedConfigsToggle = sm.createPillToggle('Show Saved Configs', { title: "Show saved configs in history", id: 'sd-webui-sm-filter-favourites' }, 'sd-webui-sm-filter-favourites-checkbox', sm.entryFilter.showFavouritesInHistory, (isOn) => {
             sm.entryFilter.showFavouritesInHistory = isOn;
             sm.persistEntryFilterIfEnabled();
@@ -1615,7 +1596,7 @@ declare let onAfterUiUpdate: (callback) => void;
                 hasChanges: false,
                 previousSort: sm.entryFilter.sort
             };
-            sm.updateStorage();
+            sm.updateStorage().catch(() => {});
             sm.syncConfigReorderControlsState?.();
             sm.queueEntriesUpdate(0);
         };
@@ -2059,7 +2040,7 @@ declare let onAfterUiUpdate: (callback) => void;
                 return;
             }
             targetState.preview = previewData;
-            sm.updateStorage();
+            sm.updateStorage().catch(() => {});
             sm.queueEntriesUpdate(0);
         });
         const getEntryFromEvent = (event) => {
@@ -2383,7 +2364,7 @@ declare let onAfterUiUpdate: (callback) => void;
         sm.updateEntries();
     };
     sm.updateEntries = function () {
-        if (!sm.hasOwnProperty('memoryStorage')) { // Storage not init'd yet, defer until it's ready
+        if (!sm.memoryStorage?.currentDefault || !sm.panelContainer) {
             sm.updateEntriesWhenStorageReady = true;
             return;
         }
@@ -2674,6 +2655,22 @@ declare let onAfterUiUpdate: (callback) => void;
         metaContainer.appendChild(deleteButton);
         metaContainer.appendChild(saveChangesButton);
         metaContainer.appendChild(loadAllButton);
+        const exportButton = sm.createElementWithInnerTextAndClassList('button', 'Export JSON');
+        exportButton.type = 'button';
+        exportButton.title = 'Export the saved values of this entry as an individual portable config';
+        const exportStatus = sm.createElementWithClassList('span', 'sd-webui-sm-portable-status');
+        exportStatus.setAttribute('role', 'status');
+        exportButton.addEventListener('click', () => {
+            try {
+                sm.downloadPortableConfig(entry.data);
+                exportStatus.innerText = 'JSON download requested.';
+            }
+            catch (error) {
+                exportStatus.innerText = error?.message || 'Could not export this entry.';
+            }
+        });
+        const portableActions = sm.createElementWithClassList('div', 'category', 'sd-webui-sm-portable-actions');
+        portableActions.append(exportButton, exportStatus);
         if (sm.getMode() == 'modal') {
             metaContainer.removeChild(saveChangesButton);
         }
@@ -2809,6 +2806,7 @@ declare let onAfterUiUpdate: (callback) => void;
                 sm.inspector.appendChild(summaryContainer);
             }
         sm.inspector.appendChild(metaContainer);
+        sm.inspector.appendChild(portableActions);
         sm.inspector.appendChild(viewSettingsContainer);
         if (sm.getMode() != 'modal') {
             sm.activeProfileSaveButtons.push(saveChangesButton);
@@ -3129,27 +3127,76 @@ declare let onAfterUiUpdate: (callback) => void;
         if (filter.length > 0) {
             values = sm.utils.getFilteredObject(values, ...filter);
         }
-        return sm.api.post("quicksettings", { contents: JSON.stringify(values) })
-            .then(response => {
-            if (!sm.utils.isValidResponse(response, 'success') || !response.success) {
-                Promise.reject(response);
-                return;
+        const items = [];
+        if (!Object.keys(values).length) {
+            return items;
+        }
+        try {
+            const current = await sm.getQuickSettings();
+            const supported = {};
+            for (const path of Object.keys(values)) {
+                if (!Object.prototype.hasOwnProperty.call(current, path)) {
+                    items.push({ path, status: 'unavailable', reason: 'Option is unavailable on this installation.' });
+                }
+                else if (!sm.isAllowedComponentValue(sm.componentMap[sm.resolveComponentPath(path)]?.entries[0], values[path])) {
+                    items.push({ path, status: 'unavailable', reason: 'The requested choice is unavailable on this installation.' });
+                }
+                else {
+                    supported[path] = values[path];
+                }
             }
-            sm.applyComponentSettings(values);
-        })
-            .catch(e => sm.utils.logResponseError("[State Manager] Applying quicksettings failed with error", e));
+            if (!Object.keys(supported).length) {
+                return items;
+            }
+            const response = await sm.api.post('quicksettings', { contents: JSON.stringify(supported) });
+            if (!response?.success) {
+                throw new Error('The options API rejected the request.');
+            }
+            const uiItems = sm.applyComponentSettings(supported);
+            const actual = await sm.getQuickSettings();
+            for (const path of Object.keys(supported)) {
+                const uiFailure = uiItems.find(item => item.path == path && item.status == 'failed');
+                const matches = sm.utils.areLooselyEqualValue(actual[path], supported[path]);
+                items.push({ path, status: matches && !uiFailure ? 'applied' : 'failed',
+                    reason: uiFailure?.reason || (matches ? '' : 'The options API did not retain the requested value.') });
+            }
+        }
+        catch (error) {
+            const reported = new Set(items.map(item => item.path));
+            for (const path of Object.keys(values)) {
+                if (!reported.has(path)) {
+                    items.push({ path, status: 'failed', reason: error?.message || 'Could not apply or verify options.' });
+                }
+            }
+            sm.utils.logResponseError('[State Manager] Applying quicksettings failed', error);
+        }
+        return items;
     };
     sm.applyComponentSettings = function (settings) {
+        const items = [];
         for (let componentPath of Object.keys(settings)) {
             const settingPathInfo = sm.utils.getSettingPathInfo(componentPath);
             const resolvedBasePath = sm.resolveComponentPath(settingPathInfo.basePath);
-            const componentData = sm.componentMap[resolvedBasePath];
-            if (!componentData) {
-                console.warn(`[State Manager] Could not apply component path ${settingPathInfo.basePath}`);
-                continue;
+            const entry = sm.componentMap[resolvedBasePath]?.entries[settingPathInfo.index];
+            try {
+                if (!entry || sm.getMappedComponentEntryValue(entry) === undefined) {
+                    items.push({ path: componentPath, status: 'unavailable', reason: 'Control is unavailable on this installation.' });
+                    continue;
+                }
+                if (!sm.isAllowedComponentValue(entry, settings[componentPath])) {
+                    items.push({ path: componentPath, status: 'unavailable', reason: 'The requested choice is unavailable.' });
+                    continue;
+                }
+                sm.setMappedComponentEntryValue(entry, settings[componentPath]);
+                const matches = sm.utils.areLooselyEqualValue(sm.getMappedComponentEntryValue(entry), settings[componentPath]);
+                items.push({ path: componentPath, status: matches ? 'applied' : 'failed',
+                    reason: matches ? '' : 'The control did not retain the requested value.' });
             }
-            sm.setMappedComponentEntryValue(componentData.entries[settingPathInfo.index], settings[componentPath]);
+            catch (error) {
+                items.push({ path: componentPath, status: 'failed', reason: error?.message || 'The control rejected the value.' });
+            }
         }
+        return items;
     };
     sm.createInspectorSettingsAccordion = function (label, data) {
         const accordion = sm.createElementWithClassList('div', 'sd-webui-sm-inspector-category', 'block', 'gradio-accordion');
@@ -3297,7 +3344,140 @@ declare let onAfterUiUpdate: (callback) => void;
     sm.getGalleryPreviews = function () {
         return gradioApp().querySelectorAll('div[id^="tab_"] div[id$="_results"] .thumbnail-item > img');
     };
+    sm.createQuickConfigSaveControls = function () {
+        const button = sm.createElementWithInnerTextAndClassList('button', 'Save Config',
+            'sd-webui-sm-nav-save-button', 'sd-webui-sm-nav-save-current-config-button',
+            'secondary', 'gradio-button', sm.svelteClasses.button);
+        button.type = 'button';
+        button.id = 'sd-webui-sm-quicksettings-button-save';
+        button.title = 'Name and save the current UI as a config';
+        button.disabled = !sm.memoryStorage?.currentDefault || !sm.componentMapReady || Boolean(sm.storageLoadFailed);
+        if (button.disabled) {
+            button.title = 'State Manager could not initialize. Reload the UI to try again.';
+        }
+        sm.quickSettingSaveButton = button;
+        const form = sm.createElementWithClassList('form', 'sd-webui-sm-quick-save-form', 'sd-webui-sm-hidden');
+        form.id = 'sd-webui-sm-quick-save-form';
+        button.setAttribute('aria-controls', form.id);
+        button.setAttribute('aria-expanded', 'false');
+        const label = sm.createElementWithInnerTextAndClassList('label', 'Config name');
+        const name = sm.createElementWithClassList('input');
+        name.id = 'sd-webui-sm-new-config-name';
+        name.type = 'text';
+        name.required = true;
+        name.placeholder = 'e.g. Portrait with soft light';
+        name.autocomplete = 'off';
+        label.htmlFor = name.id;
+        const save = sm.createElementWithInnerTextAndClassList('button', 'Save', 'secondary', 'gradio-button', sm.svelteClasses.button);
+        save.type = 'submit';
+        const cancel = sm.createElementWithInnerTextAndClassList('button', 'Cancel');
+        cancel.type = 'button';
+        const status = sm.createElementWithClassList('span', 'sd-webui-sm-quick-save-status');
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
+        for (const control of [label, name, save, cancel, status]) {
+            form.appendChild(control);
+        }
+        const close = () => {
+            form.classList.add('sd-webui-sm-hidden');
+            sm.sidePanel?.classList.remove('sd-webui-sm-naming-config');
+            button.setAttribute('aria-expanded', 'false');
+            button.focus();
+        };
+        button.addEventListener('click', () => {
+            if (!form.classList.contains('sd-webui-sm-hidden')) {
+                close();
+                return;
+            }
+            name.value = '';
+            status.innerText = '';
+            button.innerText = 'Save Config';
+            form.classList.remove('sd-webui-sm-hidden');
+            sm.sidePanel?.classList.add('sd-webui-sm-naming-config');
+            button.setAttribute('aria-expanded', 'true');
+            name.focus();
+        });
+        cancel.addEventListener('click', close);
+        form.addEventListener('keydown', event => {
+            event.stopPropagation();
+            if (event.key == 'Escape' && !sm.isSavingCurrentConfig) {
+                event.preventDefault();
+                close();
+            }
+        });
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (sm.isSavingCurrentConfig) {
+                return;
+            }
+            button.disabled = name.disabled = save.disabled = cancel.disabled = true;
+            status.innerText = 'Saving…';
+            try {
+                await sm.saveCurrentUIConfig(name.value);
+                button.innerText = 'Saved';
+                status.innerText = '';
+                close();
+                setTimeout(() => { button.innerText = 'Save Config'; }, 1600);
+            }
+            catch (error) {
+                sm.utils.logResponseError('[State Manager] Saving config failed', error);
+                status.innerText = error instanceof Error ? error.message : 'Could not save. Check the save location and try again.';
+            }
+            finally {
+                button.disabled = name.disabled = save.disabled = cancel.disabled = false;
+                if (!form.classList.contains('sd-webui-sm-hidden')) {
+                    name.focus();
+                }
+                else {
+                    button.focus();
+                }
+            }
+        });
+        return { button, form };
+    };
+    sm.saveCurrentUIConfig = async function (name) {
+        const configName = `${name ?? ''}`.trim();
+        if (!configName) {
+            throw new Error('Enter a config name before saving.');
+        }
+        if (sm.isSavingCurrentConfig) {
+            throw new Error('A config is already being saved.');
+        }
+        sm.isSavingCurrentConfig = true;
+        let state = null;
+        try {
+            const type = sm.utils.getCurrentGenerationTypeFromUI();
+            if (!type) {
+                throw new Error('Open txt2img or img2img before saving a config.');
+            }
+            state = await sm.getCurrentState(type);
+            state.name = configName;
+            state.isUiSaveConfig = true;
+            state.preview = sm.getSavedUiPreviewImagePath() || state.preview;
+            sm.saveState(state, 'favourites', false);
+            await sm.updateStorage();
+        }
+        catch (error) {
+            // Remove only this provisional save; keep existing configs and versions.
+            if (state?.createdAt && sm.memoryStorage.entries.data[state.createdAt] === state) {
+                delete sm.memoryStorage.entries.data[state.createdAt];
+                sm.removeFavouritesOrderKey(`${state.createdAt}`);
+                sm.memoryStorage.entries.updateKeys();
+                sm.updateEntries();
+            }
+            throw error;
+        }
+        finally {
+            sm.isSavingCurrentConfig = false;
+        }
+        sm.updateEntries();
+        return state;
+    };
     sm.getCurrentState = async function (type) {
+        if (!sm.memoryStorage?.currentDefault || !sm.componentMapReady || sm.storageLoadFailed) {
+            throw new Error('State Manager is not ready. Reload the UI if initialization failed.');
+        }
         return {
             saveVersion: sm.version,
             type: type, // txt2img | img2img
@@ -3307,15 +3487,20 @@ declare let onAfterUiUpdate: (callback) => void;
             preview: sm.createPreviewImageData()
         };
     };
-    sm.saveState = function (state, group) {
+    sm.saveState = function (state, group, persist = true) {
         state.createdAt = Date.now();
+        while (sm.memoryStorage.entries.data.hasOwnProperty(`${state.createdAt}`)) {
+            state.createdAt++;
+        }
         state.groups = [group];
         sm.memoryStorage.entries.data[state.createdAt] = state;
         sm.memoryStorage.entries.updateKeys();
         if (group == 'favourites') {
             sm.appendFavouritesOrderKey?.(`${state.createdAt}`);
         }
-        sm.updateStorage();
+        if (persist) {
+            sm.updateStorage().catch(() => {});
+        }
     };
     sm.deleteStates = function (requireConfirmation, ...stateKeys) {
         const shouldDelete = !requireConfirmation || confirm(`Delete ${stateKeys.length} item${stateKeys.length == 1 ? '' : 's'}? This action cannot be undone.`);
@@ -3327,7 +3512,7 @@ declare let onAfterUiUpdate: (callback) => void;
             delete sm.memoryStorage.entries.data[key];
         }
         sm.memoryStorage.entries.updateKeys();
-        sm.updateStorage();
+        sm.updateStorage().catch(() => {});
         return true;
     };
     sm.addStateToGroup = function (stateKey, group) {
@@ -3339,7 +3524,7 @@ declare let onAfterUiUpdate: (callback) => void;
         if (group == 'favourites') {
             sm.appendFavouritesOrderKey?.(`${stateKey ?? ''}`);
         }
-        sm.updateStorage();
+        sm.updateStorage().catch(() => {});
     };
     sm.removeStateFromGroup = function (stateKey, group) {
         let state = sm.memoryStorage.entries.data[stateKey];
@@ -3357,7 +3542,7 @@ declare let onAfterUiUpdate: (callback) => void;
                 sm.memoryStorage.entries.updateKeys();
             }
         }
-        sm.updateStorage();
+        sm.updateStorage().catch(() => {});
     };
     sm.setStateName = function (stateKey, name) {
         sm.memoryStorage.entries.data[stateKey].name = name;
@@ -3410,11 +3595,18 @@ declare let onAfterUiUpdate: (callback) => void;
         }
         return basePath;
     };
+    sm.getForgeNeoSelector = function (settingPath) {
+        const basePath = sm.utils.getSettingPathInfo(`${settingPath ?? ''}`.replace(/\/value$/, '')).basePath.toLowerCase();
+        const selectors = sm.forgeNeoSelectorMap || {};
+        const mappedPath = Object.keys(selectors).find(path =>
+            sm.utils.getSettingPathInfo(path.replace(/\/value$/, '')).basePath.toLowerCase() == basePath);
+        return mappedPath ? selectors[mappedPath] : null;
+    };
     sm.findElementBySelectorOrFallback = function (settingPath) {
         // Priority 1: Check explicit Forge Neo selector map
-        const selector = sm.forgeNeoSelectorMap?.[settingPath];
+        const selector = sm.getForgeNeoSelector(settingPath);
         if (selector) {
-            const element = document.querySelector(selector);
+            const element = app.querySelector(selector);
             if (element) {
                 return element;
             }
@@ -3457,12 +3649,28 @@ declare let onAfterUiUpdate: (callback) => void;
         }
         return null;
     };
+    sm.findWritableInput = function (element) {
+        if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) {
+            return element;
+        }
+        // Sliders often expose both a range and a number input. Prefer the number.
+        return element?.querySelector?.('input[type="number"]')
+            || element?.querySelector?.('textarea, select, input[type="text"], input[type="range"], input[type="checkbox"]')
+            || null;
+    };
+    sm.isAllowedComponentValue = function (entry, value) {
+        const choices = entry?.component?.props?.choices;
+        if (!Array.isArray(choices) || !choices.length || entry.component?.props?.allow_custom_value) return true;
+        const allowed = choices.map(choice => Array.isArray(choice) ? choice[1] : choice);
+        const requested = Array.isArray(value) ? value : [value];
+        return requested.every(value => allowed.some(choice => sm.utils.areLooselyEqualValue(choice, value)));
+    };
     sm.getMappedComponentEntryValue = function (entry) {
         if (!entry) {
             return undefined;
         }
         if (entry.source == 'ui-config') {
-            const element = sm.findElementBySelectorOrFallback(entry.path);
+            const element = sm.findWritableInput(sm.findElementBySelectorOrFallback(entry.path));
             if (!element) {
                 return undefined;
             }
@@ -3491,7 +3699,7 @@ declare let onAfterUiUpdate: (callback) => void;
         if (instanceContextValue !== undefined) {
             return instanceContextValue;
         }
-        const element = entry.element;
+        const element = sm.findWritableInput(entry.element);
         if (element instanceof HTMLInputElement) {
             if (element.type == 'checkbox') {
                 return element.checked;
@@ -3505,20 +3713,6 @@ declare let onAfterUiUpdate: (callback) => void;
         if (element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement) {
             return element.value;
         }
-        const nestedInput = element?.querySelector?.('textarea, input[type="text"], input[type="number"], input[type="range"], select, input[type="checkbox"]');
-        if (nestedInput instanceof HTMLInputElement) {
-            if (nestedInput.type == 'checkbox') {
-                return nestedInput.checked;
-            }
-            if (nestedInput.type == 'number' || nestedInput.type == 'range') {
-                const value = Number(nestedInput.value);
-                return Number.isNaN(value) ? nestedInput.value : value;
-            }
-            return nestedInput.value;
-        }
-        if (nestedInput instanceof HTMLTextAreaElement || nestedInput instanceof HTMLSelectElement) {
-            return nestedInput.value;
-        }
         return undefined;
     };
     sm.setMappedComponentEntryValue = function (entry, value) {
@@ -3526,7 +3720,7 @@ declare let onAfterUiUpdate: (callback) => void;
             return;
         }
         if (entry.source == 'ui-config') {
-            const element = sm.findElementBySelectorOrFallback(entry.path);
+            const element = sm.findWritableInput(sm.findElementBySelectorOrFallback(entry.path));
             if (!element) {
                 console.warn(`[State Manager] Could not find element for ${entry.path} (tried explicit selector and ui-config fallback)`);
                 return;
@@ -3571,11 +3765,11 @@ declare let onAfterUiUpdate: (callback) => void;
     };
 
     sm.buildComponentMap = async function () {
+        sm.componentMapReady = false;
         return sm.api.get("componentids")
             .then(response => {
             if (!sm.utils.isValidResponse(response)) {
-                Promise.reject(response);
-                return;
+                throw response;
             }
             sm.componentMap = {};
             const components = gradio_config.components || [];
@@ -3598,10 +3792,19 @@ declare let onAfterUiUpdate: (callback) => void;
                 const basePath = pathParts.slice(0, pathParts.length - 1).join('/');
                 if (source == 'ui-config') {
                     if (!sm.componentMap.hasOwnProperty(basePath)) {
+                        // Recover the host's component from our shared selector registry.
+                        // Keep the DOM fallback when a live Svelte instance is unavailable.
+                        const selector = sm.getForgeNeoSelector(basePath);
+                        const element = selector ? app.querySelector(selector) : null;
+                        const container = element?.id ? element : element?.closest?.('[id]');
+                        const component = componentsByElemId.get(container?.id);
+                        const hasLiveComponent = typeof component?.instance?.$set == 'function';
                         sm.componentMap[basePath] = {
                             entries: [{
-                                    source: 'ui-config',
-                                    path: basePath
+                                    source: hasLiveComponent ? 'gradio' : 'ui-config',
+                                    path: basePath,
+                                    component: hasLiveComponent ? component : undefined,
+                                    element: hasLiveComponent ? container : undefined
                                 }]
                         };
                     }
@@ -3690,6 +3893,7 @@ declare let onAfterUiUpdate: (callback) => void;
                 };
                 sm.componentMap[component.props.elem_id.substring(8)] = data; // strips "setting_" so we get sm.componentMap['sd_model_checkpoint'] e.g.
             }
+            sm.componentMapReady = true;
         })
             .catch(e => sm.utils.logResponseError("[State Manager] Getting component IDs failed with error", e));
     };
@@ -3697,8 +3901,7 @@ declare let onAfterUiUpdate: (callback) => void;
         return sm.api.get("savelocation")
             .then(response => {
             if (!sm.utils.isValidResponse(response, 'location')) {
-                Promise.reject(response);
-                return;
+                throw response;
             }
             if (response.location == 'File') {
                 return sm.getFileStorage();
@@ -3708,7 +3911,7 @@ declare let onAfterUiUpdate: (callback) => void;
             }
         })
             .then(sm.processStorageData)
-            .catch(e => sm.utils.logResponseError("[State Manager] Getting storage failed with error", e));
+            .catch(e => { sm.utils.logResponseError("[State Manager] Getting storage failed with error", e); throw e; });
     };
     sm.processStorageData = async function (storedData) {
         if (sm.utils.isEmptyObject(storedData) || storedData == "") {
@@ -3719,8 +3922,21 @@ declare let onAfterUiUpdate: (callback) => void;
             };
         }
         let bytes = storedData;
-        if (!(storedData instanceof Uint8Array)) { // Data is in "legacy" SM 1.0 format
-            bytes = Uint8Array.from(JSON.parse(storedData));
+        // filedata returns an already decoded empty-store object for new installs.
+        if (bytes && typeof bytes == 'object' && !Array.isArray(bytes) && !(bytes instanceof Uint8Array)
+            && bytes.defaults && bytes.entries) {
+            return bytes;
+        }
+        if (!(bytes instanceof Uint8Array)) {
+            if (typeof bytes == 'string') {
+                const text = bytes.trim();
+                bytes = text.startsWith('[') ? JSON.parse(text) : text.split(',').map(part =>
+                    /^\d+$/.test(part.trim()) ? Number(part) : NaN);
+            }
+            if (!Array.isArray(bytes) || bytes.some(value => !Number.isInteger(value) || value < 0 || value > 255)) {
+                throw new Error('Invalid stored bytes. Existing saved data has not been replaced.');
+            }
+            bytes = Uint8Array.from(bytes);
         }
         const decompressed = await sm.utils.decompress(bytes);
         return JSON.parse(decompressed) || {
@@ -3744,7 +3960,7 @@ declare let onAfterUiUpdate: (callback) => void;
         return sm.api.get("filedata")
             .then(response => {
             if (!sm.utils.isValidResponse(response, 'data')) {
-                Promise.reject(response);
+                throw response;
             }
             else {
                 return response.data || {
@@ -3754,32 +3970,40 @@ declare let onAfterUiUpdate: (callback) => void;
                 };
             }
         })
-            .catch(e => sm.utils.logResponseError("[State Manager] Getting file storage failed with error", e));
+            .catch(e => { sm.utils.logResponseError("[State Manager] Getting file storage failed with error", e); throw e; });
     };
     sm.updateStorage = async function () {
+        if (sm.storageLoadFailed) {
+            throw new Error('Saved data could not be loaded. Reload the UI before writing changes.');
+        }
         if (updateStorageDebounceHandle != null) {
             clearTimeout(updateStorageDebounceHandle);
             updateStorageDebounceHandle = null;
         }
-        sm.api.get("savelocation")
+        return sm.api.get("savelocation")
             .then(response => {
             if (!sm.utils.isValidResponse(response, 'location')) {
-                Promise.reject(response);
+                throw response;
             }
             else if (response.location == 'File') {
-                sm.updateFileStorage();
+                return sm.updateFileStorage();
             }
             else {
-                sm.updateLocalStorage();
+                return sm.updateLocalStorage();
             }
         })
-            .catch(e => sm.utils.logResponseError("[State Manager] Updating storage failed with error", e));
+            .catch(e => {
+            sm.utils.logResponseError("[State Manager] Updating storage failed with error", e);
+            throw e;
+        });
     };
     sm.updateLocalStorage = async function (compressedData) {
         if (compressedData == undefined) {
             compressedData = await sm.getCompressedMemoryStorage();
         }
-        sm.ldb.set('sd-webui-state-manager-data', compressedData);
+        return new Promise<void>((resolve, reject) => {
+            sm.ldb.set('sd-webui-state-manager-data', compressedData, resolve, reject);
+        });
     };
     sm.updateFileStorage = async function (compressedData) {
         if (compressedData == undefined) {
@@ -3787,7 +4011,11 @@ declare let onAfterUiUpdate: (callback) => void;
         }
         let payloadStringifiedArray = JSON.stringify(Array.from(compressedData));
         return sm.api.post("save", { contents: payloadStringifiedArray.substring(1, payloadStringifiedArray.length - 1) })
-            .catch(e => sm.utils.logResponseError("[State Manager] Saving to file storage failed with error", e));
+            .then(response => {
+            if (!sm.utils.isValidResponse(response, 'success') || !response.success) {
+                throw response;
+            }
+        });
     };
     sm.getCompressedMemoryStorage = async function () {
         // We compress the raw JSON using gzip and store that.
@@ -3825,8 +4053,7 @@ declare let onAfterUiUpdate: (callback) => void;
         return sm.api.get("uidefaults")
             .then(response => {
             if (!sm.utils.isValidResponse(response, 'hash', 'contents')) {
-                Promise.reject(response);
-                return;
+                throw response;
             }
             let contents = {};
             for (const path of Object.keys(response.contents)) {
@@ -3847,6 +4074,7 @@ declare let onAfterUiUpdate: (callback) => void;
         })
             .catch(e => {
             // sm.inspector.innerHTML = "There was an error loading current UI defaults. Please reload the UI (refresh the page).";
+            sm.storageLoadFailed = true;
             sm.utils.logResponseError("[State Manager] Getting UI defaults failed with error", e);
         });
     };
@@ -3854,8 +4082,7 @@ declare let onAfterUiUpdate: (callback) => void;
         return sm.api.get("savelocation")
             .then(response => {
             if (!sm.utils.isValidResponse(response, 'saveFile')) {
-                Promise.reject(response);
-                return;
+                throw response;
             }
             const sources = ["this browser's Indexed DB", `the shared ${response.saveFile} file`];
             const warning = type == 'merge' ?
@@ -3920,14 +4147,13 @@ declare let onAfterUiUpdate: (callback) => void;
             }
         }
         sm.memoryStorage.entries.updateKeys();
-        sm.updateStorage();
+        sm.updateStorage().catch(() => {});
     };
     sm.clearData = function (location) {
         sm.api.get("savelocation")
             .then(response => {
             if (!sm.utils.isValidResponse(response, 'location', 'saveFile')) {
-                Promise.reject(response);
-                return;
+                throw response;
             }
             const sources = ["this browser's Indexed DB", `the shared ${response.saveFile} file`];
             if (!confirm(`Warning! You are about to delete ALL entries from ${sources[location == 'Browser\'s Indexed DB' ? 0 : 1]}. This operation can not be undone! Are you sure you wish to continue?`)) {
@@ -3957,33 +4183,387 @@ declare let onAfterUiUpdate: (callback) => void;
         })
             .catch(e => sm.utils.logResponseError("[State Manager] Getting save file name failed with error", e));
     };
-    sm.applyAll = function (state) {
-        if (!sm.canProceedWithApplyAction()) {
-            return;
+    sm.getEffectiveComponentSettings = function (state) {
+        if (!['txt2img', 'img2img'].includes(state?.type)) {
+            throw new Error('This entry has an unsupported generation type.');
         }
-        const quickSettings = (state.quickSettings && typeof state.quickSettings === 'object') ? state.quickSettings : {};
-        sm.applyQuickParameters(quickSettings); // The 4 mandatory ones always get saved, any other relevant ones will be in here. Easy!
-        const savedComponentDefaults = sm.memoryStorage.savedDefaults[state.defaults];
-        let mergedComponentSettings = (state.componentSettings && typeof state.componentSettings === 'object') ? state.componentSettings : {};
-        // Add saved default value if it differs from the current UI
-        for (const settingPath in savedComponentDefaults) {
-            if (settingPath.indexOf(state.type) == -1) {
-                continue;
+        const defaults = sm.memoryStorage.savedDefaults[state.defaults];
+        if (!defaults) {
+            throw new Error('The saved defaults for this entry are missing.');
+        }
+        const result = {};
+        const belongsToType = path => path.split('/').includes(state.type);
+        for (const path of Object.keys(defaults)) {
+            if (!belongsToType(path)) continue;
+            const count = sm.componentMap[sm.resolveComponentPath(path)]?.entries.length || 1;
+            for (let i = 0; i < count; i++) {
+                result[count == 1 ? path : `${path}/${i}`] = defaults[path];
             }
-            if (!mergedComponentSettings.hasOwnProperty(settingPath)) {
-                if (!sm.componentMap.hasOwnProperty(settingPath)) { // rogue setting
-                    continue;
+        }
+        for (const path of Object.keys(state.componentSettings || {})) {
+            if (belongsToType(path)) result[path] = state.componentSettings[path];
+        }
+        return JSON.parse(JSON.stringify(result));
+    };
+    const portableConfigFormat = 'state-manager-neo/config';
+    const portableConfigMaxBytes = 2 * 1024 * 1024;
+    const portableDefaultsKey = 'portable-config-v1';
+    sm.parsePortableConfig = function (text) {
+        if (typeof text != 'string' || text.length > portableConfigMaxBytes || new Blob([text]).size > portableConfigMaxBytes) {
+            throw new Error('Config file is too large (maximum 2 MB).');
+        }
+        let payload;
+        try { payload = JSON.parse(text); }
+        catch { throw new Error('Choose a valid config JSON file.'); }
+        if (payload?.format != portableConfigFormat) throw new Error('This is not a State Manager Neo config file.');
+        if (payload.version !== 1) throw new Error('Unsupported config file version.');
+        const config = payload.config;
+        if (!config || !['txt2img', 'img2img'].includes(config.type)) throw new Error('Unsupported config type.');
+        if (typeof config.name != 'string' || !config.name.trim() || config.name.length > 200) {
+            throw new Error('Config name must contain 1 to 200 characters.');
+        }
+        const checkKeys = (object, allowed) => {
+            if (Object.keys(object).some(key => !allowed.includes(key))) throw new Error('Unexpected config file key.');
+        };
+        checkKeys(payload, ['format', 'version', 'config']);
+        checkKeys(config, ['name', 'type', 'componentSettings', 'quickSettings']);
+        const checkValue = (value, depth = 0) => {
+            if (depth > 10) throw new Error('Config values are nested too deeply.');
+            if (value === null || typeof value == 'string' || typeof value == 'boolean') return;
+            if (typeof value == 'number' && Number.isFinite(value)) return;
+            if (typeof value != 'object') throw new Error('Unsupported config value.');
+            for (const key of Object.keys(value)) {
+                if (['__proto__', 'prototype', 'constructor'].includes(key)) throw new Error('Unsafe config value key.');
+                checkValue(value[key], depth + 1);
+            }
+        };
+        for (const kind of ['componentSettings', 'quickSettings']) {
+            const settings = config[kind];
+            if (!settings || typeof settings != 'object' || Array.isArray(settings)) throw new Error(`Invalid ${kind} map.`);
+            if (Object.keys(settings).length > 1000) throw new Error('Too many config settings (maximum 1000 per map).');
+            for (const path of Object.keys(settings)) {
+                if (!path || path.length > 500 || path.split('/').some(part => ['__proto__', 'prototype', 'constructor'].includes(part))) {
+                    throw new Error('Invalid config setting path or key.');
                 }
-                const value = savedComponentDefaults[settingPath];
-                const mappedComponents = sm.componentMap[settingPath].entries;
-                for (let i = 0; i < mappedComponents.length; i++) {
-                    if (!sm.utils.areLooselyEqualValue(value, sm.getMappedComponentEntryValue(mappedComponents[i]))) {
-                        mergedComponentSettings[mappedComponents.length == 1 ? settingPath : `${settingPath}/${i}`] = value;
+                if (kind == 'componentSettings' && (!path.split('/').includes(config.type)
+                    || path.split('/').includes(config.type == 'txt2img' ? 'img2img' : 'txt2img'))) {
+                    throw new Error('Component path does not match the config type.');
+                }
+                if (kind == 'quickSettings' && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(path)) throw new Error('Invalid option key.');
+                checkValue(settings[path]);
+            }
+        }
+        config.name = config.name.trim();
+        return payload;
+    };
+    sm.createPortableConfig = function (state) {
+        return sm.parsePortableConfig(JSON.stringify({ format: portableConfigFormat, version: 1, config: {
+            name: `${state.name || `${state.type} config`}`,
+            type: state.type,
+            componentSettings: sm.getEffectiveComponentSettings(state),
+            quickSettings: state.quickSettings || {}
+        } }));
+    };
+    sm.downloadPortableConfig = function (state) {
+        const payload = sm.createPortableConfig(state);
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        if (blob.size > portableConfigMaxBytes) throw new Error('Config file is too large (maximum 2 MB).');
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `${payload.config.name.replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 80) || 'config'}.json`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    sm.importPortableConfig = async function (payload, name) {
+        const validated = sm.parsePortableConfig(JSON.stringify(payload));
+        const configName = `${name ?? ''}`.trim();
+        if (!configName || configName.length > 200) throw new Error('Enter a config name (1 to 200 characters).');
+        if (sm.isSavingCurrentConfig) throw new Error('A config is already being saved.');
+        if (!sm.componentMapReady || !sm.memoryStorage.currentDefault || sm.storageLoadFailed) {
+            throw new Error('State Manager is not ready. Reload the UI before importing.');
+        }
+        sm.isSavingCurrentConfig = true;
+        let state = null;
+        const addedDefaults = !Object.prototype.hasOwnProperty.call(sm.memoryStorage.savedDefaults, portableDefaultsKey);
+        try {
+            if (!addedDefaults && Object.keys(sm.memoryStorage.savedDefaults[portableDefaultsKey]).length) {
+                throw new Error('The portable defaults namespace is occupied.');
+            }
+            if (addedDefaults) sm.memoryStorage.savedDefaults[portableDefaultsKey] = {};
+            state = { saveVersion: sm.version, type: validated.config.type, name: configName,
+                defaults: portableDefaultsKey, quickSettings: validated.config.quickSettings,
+                componentSettings: validated.config.componentSettings, isUiSaveConfig: true,
+                preview: sm.getSavedUiPreviewImagePath() || null };
+            sm.saveState(state, 'favourites', false);
+            await sm.updateStorage();
+        }
+        catch (error) {
+            if (state?.createdAt && sm.memoryStorage.entries.data[state.createdAt] === state) {
+                delete sm.memoryStorage.entries.data[state.createdAt];
+                sm.removeFavouritesOrderKey(`${state.createdAt}`);
+                sm.memoryStorage.entries.updateKeys();
+            }
+            if (addedDefaults && !Object.values(sm.memoryStorage.entries.data).some((entry: any) => entry.defaults == portableDefaultsKey)) {
+                delete sm.memoryStorage.savedDefaults[portableDefaultsKey];
+            }
+            throw error;
+        }
+        finally { sm.isSavingCurrentConfig = false; }
+        sm.updateEntries();
+        return state;
+    };
+    sm.createConfigImportControls = function () {
+        const button = sm.createElementWithInnerTextAndClassList('button', 'Import JSON', 'sd-webui-sm-import-button');
+        button.type = 'button';
+        button.setAttribute('aria-expanded', 'false');
+        button.setAttribute('aria-controls', 'sd-webui-sm-import-form');
+        const form = sm.createElementWithClassList('form', 'sd-webui-sm-import-form');
+        form.id = 'sd-webui-sm-import-form';
+        form.hidden = true;
+        const fileLabel = sm.createElementWithInnerTextAndClassList('label', 'Config JSON');
+        const file = sm.createElementWithClassList('input');
+        file.type = 'file';
+        file.accept = '.json,application/json';
+        fileLabel.appendChild(file);
+        const nameLabel = sm.createElementWithInnerTextAndClassList('label', 'Import name');
+        const name = sm.createElementWithClassList('input');
+        name.type = 'text';
+        name.required = true;
+        name.maxLength = 200;
+        nameLabel.appendChild(name);
+        const status = sm.createElementWithClassList('span', 'sd-webui-sm-portable-status');
+        status.setAttribute('role', 'status');
+        const preview = sm.createElementWithClassList('details', 'sd-webui-sm-import-preview');
+        preview.appendChild(sm.createElementWithInnerTextAndClassList('summary', 'Preview values'));
+        const list = sm.createElementWithClassList('ul');
+        preview.appendChild(list);
+        const save = sm.createElementWithInnerTextAndClassList('button', 'Import as New Config', 'secondary', 'gradio-button', sm.svelteClasses.button);
+        save.type = 'submit';
+        save.disabled = true;
+        const cancel = sm.createElementWithInnerTextAndClassList('button', 'Cancel');
+        cancel.type = 'button';
+        form.append(fileLabel, nameLabel, status, preview, save, cancel);
+        let payload = null;
+        let attempt = 0;
+        let importing = false;
+        const close = () => {
+            if (importing) return;
+            attempt++;
+            payload = null;
+            file.value = '';
+            file.disabled = false;
+            form.hidden = true;
+            sm.sidePanel?.classList.remove('sd-webui-sm-importing-config');
+            button.setAttribute('aria-expanded', 'false');
+            button.focus();
+        };
+        button.addEventListener('click', () => {
+            if (!form.hidden) { close(); return; }
+            form.hidden = false;
+            sm.sidePanel?.classList.add('sd-webui-sm-importing-config');
+            button.setAttribute('aria-expanded', 'true');
+            name.value = status.innerText = '';
+            list.replaceChildren();
+            preview.hidden = true;
+            preview.open = false;
+            save.disabled = true;
+            file.focus();
+        });
+        cancel.addEventListener('click', close);
+        form.addEventListener('keydown', event => {
+            event.stopPropagation();
+            if (event.key == 'Escape') { event.preventDefault(); close(); }
+        });
+        file.addEventListener('change', async () => {
+            const selected = file.files?.[0];
+            const currentAttempt = ++attempt;
+            payload = null;
+            save.disabled = true;
+            preview.hidden = true;
+            preview.open = false;
+            list.replaceChildren();
+            if (!selected) return;
+            file.disabled = true;
+            status.innerText = 'Reading config…';
+            try {
+                if (selected.size > portableConfigMaxBytes) throw new Error('Config file is too large (maximum 2 MB).');
+                const parsed = sm.parsePortableConfig(await selected.text());
+                let quick = null;
+                try { quick = await sm.getQuickSettings(); } catch { /* Import can preserve values when compatibility is unknown. */ }
+                if (currentAttempt != attempt) return;
+                payload = parsed;
+                name.value = parsed.config.name;
+                let unavailable = 0;
+                for (const kind of ['quickSettings', 'componentSettings']) {
+                    for (const [path, value] of Object.entries(parsed.config[kind])) {
+                        const info = sm.utils.getSettingPathInfo(path);
+                        let available = null;
+                        if (kind == 'quickSettings') {
+                            available = quick ? Object.prototype.hasOwnProperty.call(quick, path) : null;
+                            if (available === true) available = sm.isAllowedComponentValue(sm.componentMap[sm.resolveComponentPath(path)]?.entries[0], value);
+                        }
+                        else {
+                            const entry = sm.componentMap[sm.resolveComponentPath(info.basePath)]?.entries[info.index];
+                            try { available = !!entry && sm.getMappedComponentEntryValue(entry) !== undefined && sm.isAllowedComponentValue(entry, value); }
+                            catch { available = false; }
+                        }
+                        if (available === false) unavailable++;
+                        const text = JSON.stringify(value);
+                        list.appendChild(sm.createElementWithInnerTextAndClassList('li',
+                            `${path}: ${text.length > 200 ? `${text.slice(0, 200)}…` : text}${available === false ? ' (unavailable here)' : available === null ? ' (compatibility unknown)' : ''}`));
                     }
                 }
+                const count = Object.keys(parsed.config.componentSettings).length + Object.keys(parsed.config.quickSettings).length;
+                status.innerText = `${parsed.config.type} · ${count} settings · ${unavailable} unavailable here.${quick ? '' : ' Option compatibility could not be checked.'} Import creates a new config; values are not applied.`;
+                preview.hidden = false;
+                save.disabled = false;
+                name.focus();
+            }
+            catch (error) {
+                if (currentAttempt == attempt) status.innerText = error?.message || 'Could not read this config.';
+            }
+            finally { if (currentAttempt == attempt) file.disabled = false; }
+        });
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!payload || importing) return;
+            importing = true;
+            button.disabled = file.disabled = name.disabled = save.disabled = cancel.disabled = true;
+            status.innerText = 'Importing…';
+            try {
+                const state = await sm.importPortableConfig(payload, name.value);
+                status.innerText = `Imported "${state.name}" as a new config. Values were not applied.`;
+                payload = null;
+                file.value = '';
+            }
+            catch (error) { status.innerText = error?.message || 'Could not save the imported config. Try again.'; }
+            finally {
+                importing = false;
+                button.disabled = file.disabled = name.disabled = cancel.disabled = false;
+                save.disabled = !payload;
+                if (payload) name.focus(); else cancel.focus();
+            }
+        });
+        return { button, form };
+    };
+    sm.lastConfigUndo = null;
+    sm.isApplyingConfig = false;
+    sm.createConfigApplyFeedback = function () {
+        const container = sm.createElementWithClassList('div', 'sd-webui-sm-apply-feedback');
+        container.hidden = true;
+        const status = sm.createElementWithClassList('span', 'sd-webui-sm-apply-status');
+        status.setAttribute('role', 'status');
+        status.setAttribute('aria-live', 'polite');
+        const undo = sm.createElementWithInnerTextAndClassList('button', 'Undo');
+        undo.type = 'button';
+        undo.title = 'Restore values from before the last complete config application';
+        undo.addEventListener('click', () => sm.undoLastConfigApply());
+        const details = sm.createElementWithClassList('details');
+        details.appendChild(sm.createElementWithInnerTextAndClassList('summary', 'Details'));
+        const list = sm.createElementWithClassList('ul');
+        details.appendChild(list);
+        container.append(status, undo, details);
+        sm.configApplyFeedback = { container, status, undo, details, list };
+        return container;
+    };
+    sm.renderConfigApplyFeedback = function (report) {
+        const feedback = sm.configApplyFeedback;
+        if (!feedback) return;
+        feedback.container.hidden = false;
+        sm.sidePanel?.classList.add('sd-webui-sm-has-apply-feedback');
+        feedback.undo.disabled = sm.isApplyingConfig || !sm.lastConfigUndo;
+        feedback.list.replaceChildren();
+        feedback.details.hidden = !report.items?.length;
+        if (sm.isApplyingConfig) {
+            feedback.status.innerText = report.undo ? 'Undoing config…' : 'Applying config…';
+            return;
+        }
+        if (report.error) {
+            feedback.status.innerText = `Could not ${report.undo ? 'undo' : 'apply'}: ${report.error}`;
+            return;
+        }
+        const counts = status => report.items.filter(item => item.status == status).length;
+        feedback.status.innerText = `${report.undo ? 'Undo' : 'Config'}: ${counts('applied')} applied · ${counts('unavailable')} unavailable · ${counts('failed')} failed`;
+        for (const item of report.items) {
+            feedback.list.appendChild(sm.createElementWithInnerTextAndClassList('li',
+                `${item.path}: ${item.status}${item.reason ? ` — ${item.reason}` : ''}`));
+        }
+    };
+    sm.runConfigApplication = async function (state, undo = false) {
+        if (sm.isApplyingConfig || !sm.canProceedWithApplyAction()) {
+            return { blocked: true, items: [] };
+        }
+        sm.isApplyingConfig = true;
+        const report = { undo, items: [], error: '' };
+        sm.renderConfigApplyFeedback(report);
+        try {
+            if (!sm.componentMapReady || !sm.memoryStorage.currentDefault || sm.storageLoadFailed) {
+                throw new Error('State Manager is not ready. Reload the UI if initialization failed.');
+            }
+            const components = undo ? state.componentSettings : sm.getEffectiveComponentSettings(state);
+            const quickSettings = state.quickSettings || {};
+            const currentQuick = await sm.getQuickSettings();
+            const snapshot = { type: state.type, componentSettings: {}, quickSettings: {} };
+            for (const path of Object.keys(components)) {
+                const info = sm.utils.getSettingPathInfo(path);
+                const entry = sm.componentMap[sm.resolveComponentPath(info.basePath)]?.entries[info.index];
+                const current = sm.getMappedComponentEntryValue(entry);
+                if (current !== undefined) snapshot.componentSettings[path] = current;
+            }
+            for (const path of Object.keys(quickSettings)) {
+                if (Object.prototype.hasOwnProperty.call(currentQuick, path)) snapshot.quickSettings[path] = currentQuick[path];
+            }
+            // Capture before the first write, including fields a failing setter might partially change.
+            if (!undo && (Object.keys(snapshot.componentSettings).length || Object.keys(snapshot.quickSettings).length)) {
+                sm.lastConfigUndo = JSON.parse(JSON.stringify(snapshot));
+            }
+            report.items.push(...await sm.applyQuickParameters(quickSettings));
+            const componentItems = sm.applyComponentSettings(components);
+            // Svelte schedules updates in a microtask; check again after that flush.
+            await Promise.resolve();
+            for (const item of componentItems) {
+                if (item.status != 'applied') continue;
+                try {
+                    const info = sm.utils.getSettingPathInfo(item.path);
+                    const entry = sm.componentMap[sm.resolveComponentPath(info.basePath)]?.entries[info.index];
+                    if (!sm.utils.areLooselyEqualValue(sm.getMappedComponentEntryValue(entry), components[item.path])) {
+                        item.status = 'failed';
+                        item.reason = 'The control changed after the UI update.';
+                    }
+                }
+                catch (error) { item.status = 'failed'; item.reason = error?.message || 'Could not verify the control.'; }
+            }
+            report.items.push(...componentItems);
+            if (undo) {
+                // Keep only unfinished fields so Undo can be retried without repeating successful writes.
+                const remaining = new Set(report.items.filter(item => item.status != 'applied').map(item => item.path));
+                const pending = { type: state.type,
+                    componentSettings: Object.fromEntries(Object.entries(components).filter(([path]) => remaining.has(path))),
+                    quickSettings: Object.fromEntries(Object.entries(quickSettings).filter(([path]) => remaining.has(path))) };
+                sm.lastConfigUndo = remaining.size ? pending : null;
             }
         }
-        sm.applyComponentSettings(mergedComponentSettings);
+        catch (error) {
+            report.error = error?.message || 'Could not capture the current setup.';
+            sm.utils.logResponseError('[State Manager] Config application failed', error);
+        }
+        finally {
+            sm.isApplyingConfig = false;
+            sm.lastConfigApplyReport = report;
+            sm.renderConfigApplyFeedback(report);
+        }
+        return report;
+    };
+    sm.applyAll = async function (state) {
+        return sm.runConfigApplication(state);
+    };
+    sm.undoLastConfigApply = async function () {
+        if (!sm.lastConfigUndo) return { blocked: true, items: [] };
+        return sm.runConfigApplication(sm.lastConfigUndo, true);
     };
     sm.applyStartupConfigIfEnabled = function () {
         if (sm.hasAppliedStartupConfig) {
@@ -4006,12 +4586,16 @@ declare let onAfterUiUpdate: (callback) => void;
     sm.getQuickSettings = async function () {
         return sm.api.get("quicksettings")
             .then(response => {
-            if (!sm.utils.isValidResponse(response, 'settings')) {
-                Promise.reject(response);
+            if (!sm.utils.isValidResponse(response, 'settings') || !response.settings
+                || typeof response.settings != 'object' || Array.isArray(response.settings)) {
+                throw response;
             }
             return response.settings;
         })
-            .catch(e => sm.utils.logResponseError("[State Manager] Getting quicksettings failed with error", e));
+            .catch(e => {
+            sm.utils.logResponseError("[State Manager] Getting quicksettings failed with error", e);
+            throw e;
+        });
     };
     sm.getComponentSettings = function (type, changedOnly = true) {
         let settings = {};
@@ -4150,7 +4734,7 @@ declare let onAfterUiUpdate: (callback) => void;
                     return response.json();
                 }
                 else {
-                    return Promise.reject(response);
+                    throw response;
                 }
             });
         },
@@ -4161,7 +4745,7 @@ declare let onAfterUiUpdate: (callback) => void;
                     return response.json();
                 }
                 else {
-                    return Promise.reject(response);
+                    throw response;
                 }
             });
         }
@@ -4188,7 +4772,8 @@ declare let onAfterUiUpdate: (callback) => void;
         },
         // Objects
         isDeepEqual: (object1, object2) => {
-            if (!object1 || !object2) {
+            if (!object1 || !object2 || typeof object1 != 'object' || typeof object2 != 'object'
+                || Array.isArray(object1) != Array.isArray(object2)) {
                 return false;
             }
             const objKeys1 = Object.keys(object1);
@@ -4313,7 +4898,7 @@ declare let onAfterUiUpdate: (callback) => void;
         const versionPromise = sm.api.get("version")
             .then(response => {
             if (!sm.utils.isValidResponse(response, 'version')) {
-                Promise.reject(response);
+                throw response;
             }
             sm.version = response.version;
         })
@@ -4325,14 +4910,13 @@ declare let onAfterUiUpdate: (callback) => void;
                 sm.updateEntries();
             }
         })
-            .catch(e => sm.utils.logResponseError("[State Manager] Could not get data from storage", e));
-        // Build the component map in parallel; UI can render before this finishes.
-        const componentMapPromise = sm.buildComponentMap();
-        const forgeNeoSelectorsPromise = sm.fetchForgeNeoSelectors();
-        await Promise.all([versionPromise, storagePromise]);
+            .catch(e => {
+            sm.storageLoadFailed = true;
+            sm.utils.logResponseError("[State Manager] Could not get data from storage", e);
+        });
+        const componentMapPromise = sm.fetchForgeNeoSelectors().then(() => sm.buildComponentMap());
+        await Promise.all([versionPromise, storagePromise, componentMapPromise]);
         sm.injectUI();
-        await componentMapPromise;
-        await forgeNeoSelectorsPromise;
         sm.applyStartupConfigIfEnabled?.();
     };
     onUiLoaded(sm.init);

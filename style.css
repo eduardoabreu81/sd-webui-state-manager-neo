@@ -101,7 +101,7 @@
     min-width: 0;
 
     display: grid;
-    grid-template-rows: 2.2em auto minmax(0, 1fr);
+    grid-template-rows: var(--sm-navigation-row-height, 2.2em) auto minmax(0, 1fr);
     grid-template-columns: minmax(320px, 100%);
     height: min(78vh, 900px);
     min-height: 560px;
@@ -156,7 +156,7 @@
     left: var(--position-offset);
     height: 95vh;
     min-height: unset;
-    grid-template-rows: 2em calc(100% - 2em);
+    grid-template-rows: var(--sm-navigation-row-height, 2em) minmax(0, 1fr);
     grid-template-columns: 75% auto;
     padding: var(--modal-padding);
     background-color: #FFF;
@@ -371,6 +371,133 @@ body.sd-webui-sm-modal-open {
     color: var(--button-secondary-text-color) !important;
 }
 
+.sd-webui-sm-side-panel.sd-webui-sm-naming-config {
+    --sm-navigation-row-height: auto;
+}
+
+.sd-webui-sm-side-panel.sd-webui-sm-has-apply-feedback,
+.sd-webui-sm-side-panel.sd-webui-sm-importing-config {
+    --sm-navigation-row-height: auto;
+}
+
+.sd-webui-sm-apply-feedback {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .35em .7em;
+    padding: .5em;
+    font-size: .85em;
+    border-top: 1px solid var(--border-color-primary);
+}
+
+.sd-webui-sm-apply-feedback[hidden] { display: none; }
+.sd-webui-sm-apply-status { flex: 1 1 180px; overflow-wrap: anywhere; }
+.sd-webui-sm-apply-feedback details { flex: 1 0 100%; }
+.sd-webui-sm-apply-feedback summary { cursor: pointer; }
+.sd-webui-sm-apply-feedback ul {
+    max-height: 9em;
+    overflow: auto;
+    padding-left: 1.5em;
+    overflow-wrap: anywhere;
+}
+
+.sd-webui-sm-import-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5em;
+    padding: .6em;
+    border-top: 1px solid var(--border-color-primary);
+    font-size: .9em;
+}
+
+.sd-webui-sm-import-form[hidden] { display: none; }
+.sd-webui-sm-import-form label { flex: 1 1 180px; min-width: 0; }
+.sd-webui-sm-import-form input { display: block; width: 100%; min-width: 0; box-sizing: border-box; }
+.sd-webui-sm-portable-status { overflow-wrap: anywhere; }
+.sd-webui-sm-portable-actions { display: flex; flex-wrap: wrap; gap: .5em; align-items: center; padding-block: .5em; }
+.sd-webui-sm-import-button { white-space: nowrap; font-size: .85em; }
+.sd-webui-sm-import-form .sd-webui-sm-portable-status,
+.sd-webui-sm-import-preview { flex: 1 0 100%; }
+.sd-webui-sm-import-preview summary { cursor: pointer; }
+.sd-webui-sm-import-preview ul { max-height: 10em; overflow: auto; overflow-wrap: anywhere; padding-left: 1.5em; }
+.sd-webui-sm-import-form :focus-visible,
+.sd-webui-sm-apply-feedback :focus-visible {
+    outline: 2px solid var(--color-accent, #f97316);
+    outline-offset: 2px;
+}
+.sd-webui-sm-import-form :disabled { opacity: .65; cursor: wait; }
+
+.sd-webui-sm-naming-config .sd-webui-sm-navigation {
+    height: auto;
+}
+
+.sd-webui-sm-has-apply-feedback .sd-webui-sm-navigation,
+.sd-webui-sm-importing-config .sd-webui-sm-navigation {
+    height: auto;
+    max-height: min(45vh, 380px);
+    overflow-y: auto;
+}
+
+.sd-webui-sm-control .sd-webui-sm-nav-save-current-config-button {
+    width: auto;
+    min-width: 0;
+    min-height: 2rem;
+    height: auto;
+    padding: 4px 10px;
+    flex-shrink: 0;
+    background: var(--button-primary-background-fill) !important;
+    border-color: var(--button-primary-border-color) !important;
+    color: var(--button-primary-text-color) !important;
+}
+
+.sd-webui-sm-quick-save-form {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+    color: var(--body-text-color);
+    background: var(--body-background-fill);
+    border-bottom: 1px solid var(--border-color-primary);
+    font-size: .875rem;
+}
+
+.sd-webui-sm-quick-save-form input {
+    flex: 1 1 180px;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--input-border-color);
+    border-radius: var(--input-radius);
+    color: var(--body-text-color);
+    background: var(--input-background-fill);
+}
+
+.sd-webui-sm-quick-save-form button {
+    min-height: 2rem;
+    padding: 4px 10px;
+}
+
+.sd-webui-sm-quick-save-form :focus-visible {
+    outline: 2px solid var(--primary-400);
+    outline-offset: 2px;
+}
+
+.sd-webui-sm-quick-save-status {
+    flex-basis: 100%;
+    overflow-wrap: anywhere;
+}
+
+.sd-webui-sm-quick-save-status:empty {
+    display: none;
+}
+
+.sd-webui-sm-quick-save-form :disabled,
+.sd-webui-sm-control .sd-webui-sm-nav-save-current-config-button:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
 .sd-webui-sm-panel-container:not(.sd-webui-sm-modal-panel) .sd-webui-sm-control .sd-webui-sm-nav-save-current-config-button,
 .sd-webui-sm-panel-container:not(.sd-webui-sm-modal-panel) .sd-webui-sm-control .sd-webui-sm-nav-apply-config-button {
     position: static;
@@ -385,8 +512,8 @@ body.sd-webui-sm-modal-open {
 }
 
 .sd-webui-sm-control .sd-webui-sm-nav-save-current-config-button:hover {
-    background: #1d4ed8 !important;
-    border-color: #1d4ed8 !important;
+    background: var(--button-primary-background-fill-hover) !important;
+    border-color: var(--button-primary-border-color-hover) !important;
 }
 
 .sd-webui-sm-control .sd-webui-sm-nav-apply-config-button:hover {
@@ -1212,7 +1339,7 @@ body.sd-webui-sm-resizing {
 @media (max-width: 1024px) {
     .sd-webui-sm-side-panel {
         grid-template-columns: minmax(320px, 100%);
-        grid-template-rows: 2.2em auto minmax(220px, 1fr);
+        grid-template-rows: var(--sm-navigation-row-height, 2.2em) auto minmax(220px, 1fr);
         min-height: 660px;
     }
 
@@ -1230,6 +1357,31 @@ body.sd-webui-sm-resizing {
         grid-row: 3;
         border-left: 1px solid var(--border-color-primary);
         padding-top: 6px;
+    }
+}
+
+@media (max-width: 700px) {
+    .sd-webui-sm-modal-panel .sd-webui-sm-side-panel {
+        --modal-padding: 12px;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: var(--sm-navigation-row-height, 2em) minmax(100px, 1fr) minmax(160px, 1fr);
+    }
+
+    .sd-webui-sm-modal-panel .sd-webui-sm-entry-container { grid-column: 1; grid-row: 2; }
+    .sd-webui-sm-modal-panel .sd-webui-sm-inspector {
+        grid-column: 1;
+        grid-row: 3;
+        padding-left: 0;
+    }
+
+    .sd-webui-sm-modal-panel .sd-webui-sm-entry-header {
+        height: auto;
+        flex-wrap: wrap;
+        box-sizing: border-box;
+    }
+    .sd-webui-sm-modal-panel .sd-webui-sm-entry-header .sd-webui-sm-entry-toolbar-row {
+        display: flex;
+        width: 100%;
     }
 }
 
@@ -1405,6 +1557,8 @@ body.sd-webui-sm-resizing {
 
 .sd-webui-sm-inspector .meta-container {
     display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
     padding-bottom: 7px;
     margin-bottom: 4px;
     border-bottom: 1px solid var(--border-color-primary);
@@ -1486,6 +1640,8 @@ body.sd-webui-sm-resizing {
     padding: 3px 6px;
     margin: 1px;
     flex-grow: .7;
+    flex-basis: 140px;
+    min-width: 0;
 }
 
 /* .sd-webui-sm-inspector .delete-button { */
@@ -1498,7 +1654,7 @@ body.sd-webui-sm-resizing {
 
 .sd-webui-sm-inspector .sd-webui-sm-inspector-save-button,
 .sd-webui-sm-inspector .sd-webui-sm-inspector-load-all-button {
-    flex: 1 1 0;
+    flex: 1 1 100px;
     width: auto;
     min-width: 0;
 }
@@ -1605,6 +1761,14 @@ body.sd-webui-sm-resizing {
     border-color: var(--button-secondary-border-color-hover);
     background: var(--button-secondary-background-fill-hover);
     /* color: var(--button-secondary-text-color-hover); */
+}
+
+.sd-webui-sm-inspector .sd-webui-sm-portable-actions button {
+    width: auto;
+    height: auto;
+    min-height: 2em;
+    padding: 4px 8px;
+    white-space: nowrap;
 }
 
 .sd-webui-sm-inspector .sd-webui-sm-inspector-wide-button {

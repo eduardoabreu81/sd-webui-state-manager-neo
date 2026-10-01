@@ -8,7 +8,7 @@
 
 [![Forge Neo](https://img.shields.io/badge/Forge-Neo-blue)](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-0.0.2-blueviolet.svg)](#-whats-new)
+[![Version](https://img.shields.io/badge/Version-0.0.3-blueviolet.svg)](#-whats-new)
 
 > **Extension for [Stable Diffusion WebUI Forge Neo](https://github.com/Haoming02/sd-webui-forge-classic/tree/neo)**
 
@@ -32,6 +32,20 @@ Save your full txt2img/img2img setup once — model, sampler, prompts, Hires set
 
 ## 🆕 What's New
 
+### v0.0.3 — Reliable Application and Portable Configs
+
+- Sampler, steps and schedule type resolve through live Forge controls in txt2img and img2img
+- CFG Scale and Denoising Strength keep explicit compatibility fallbacks
+- **Save Config** opens an inline name field: Enter saves, Escape or Cancel closes it
+- Save confirmation waits for successful storage; failed saves keep existing configs intact
+- Automatic version history remains enabled when saving changes to an existing config
+- Complete config application waits for options and reports applied, unavailable and failed fields
+- **Undo** restores values captured before the last complete application, including options
+- **Export JSON** shares an individual config with its original effective values
+- **Import JSON** previews values and compatibility, then saves a new config without overwriting or applying it
+- Unavailable choices are skipped when exposed by the host; numeric and boolean comparisons correctly detect differences
+- Narrow modal layouts accommodate the application feedback and import controls
+
 ### v0.0.2 — Version History UX
 
 - **Config overwrite creates version history** — each Save Changes archives the previous state into History
@@ -44,6 +58,17 @@ Save your full txt2img/img2img setup once — model, sampler, prompts, Hires set
 ---
 
 ## 📖 Changelog
+
+### v0.0.3 — Reliable Application and Portable Configs
+
+- Await complete config application and show per-field results with expandable details
+- Add one-level Undo, retaining only unfinished fields when restoration needs a retry
+- Export individual configs with their original effective defaults and explicit overrides
+- Import validated JSON through a preview, with a new identity and confirmed storage
+- Improve sampler, steps, scheduler, CFG and denoising capture/restore compatibility
+- Add inline naming and reliable save completion for IndexedDB and file storage
+- Correct comparisons of numeric and boolean UI values and improve narrow modal layouts
+- Preserve automatic config version history and keep TypeScript and shipped JavaScript synchronized
 
 ### v0.0.2 — Version History UX
 
@@ -67,6 +92,8 @@ Save your full txt2img/img2img setup once — model, sampler, prompts, Hires set
 
 ## 🗺️ Roadmap
 
+### v0.0.3 — Reliable Application and Portable Configs *(complete)* ✅
+
 ### v0.0.2 — Version History UX *(complete)* ✅
 
 ### v0.1.0 *(planned)*
@@ -78,7 +105,7 @@ Save your full txt2img/img2img setup once — model, sampler, prompts, Hires set
 ### v0.2.0 *(planned)*
 
 - Pinned/favorite config improvements
-- Config import/export
+- Batch config import/export and migration tools
 - Side-by-side version comparison tools
 
 ---
@@ -93,12 +120,14 @@ Save your full txt2img/img2img setup once — model, sampler, prompts, Hires set
 - Restore full config or apply selected fields only
 - Works well for frequent style/project switching
 - Startup auto-apply option for default configs
+- Application result with expandable per-field details and one-level Undo
 
 ### 🗂️ Config Workflow
 
 - Named reusable configs with search and filter support
 - **Save Changes** flow for iterative edits without losing previous state
 - Inspector shows which fields differ between saved config and current UI
+- Individual portable JSON export/import with a preview and explicit confirmation
 
 ### 📜 History Workflow ⭐
 
@@ -131,10 +160,31 @@ https://github.com/eduardoabreu81/sd-webui-state-manager-neo
 ## 🚀 Quick Start
 
 1. Set up your generation screen the way you want
-2. Open State Manager and save a config
+2. Open State Manager, click **Save Config**, enter a name and press **Enter** or **Save**
 3. Change your UI settings and click **Save Changes** to update the config
 4. Go to **History** to see the version trail for that config
 5. Click any version card to preview the diff — then hit **Restore** to apply it
+
+After a complete application, check the result above the list. **Details** identifies
+fields that are unavailable or failed; **Undo** restores the preceding values. Undo
+is kept in memory until the next complete application or page reload. It does not
+create history entries and does not cover individual inspector field loads. If
+some fields cannot be restored, Undo retains those fields for a retry. Later edits
+to fields covered by Undo will also be replaced when you use it.
+
+To share an entry, select it and click **Export JSON** in the inspector. The file
+contains saved defaults plus explicit overrides, including prompts and options.
+It excludes history, entry identity, thumbnails, and model files.
+
+To bring it back, click **Import JSON** in the list toolbar, choose the file, review
+**Preview values**, and edit the import name if needed. **Import as New Config**
+waits for successful storage. Matching names still create separate entries. Import
+preserves unsupported fields so you can move the file between installations; it
+does not apply values or install models/extensions. Version 1 files are limited
+to 2 MB and 1,000 settings per map.
+
+Application results verify UI values and the options API after writing them.
+Model loading and generation remain the responsibility of the Forge host.
 
 ---
 
