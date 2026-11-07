@@ -30,4 +30,16 @@ FORGE_NEO_SELECTORS = {
     "customscript/sampler.py/img2img/Sampling Method": "#img2img_sampling",
     "customscript/sampler.py/img2img/Sampling Steps":  "#img2img_steps",
     "customscript/sampler.py/img2img/Schedule Type":   "#img2img_scheduler",
+
+    # Forge Neo 2.31 drops these from component_mapping via no_config(), and the label
+    # fallback misses them on a localized UI (ko_KR shows "너비" for Width) -> size was never saved
+    "txt2img/Width":                     "#txt2img_width",
+    "txt2img/Height":                    "#txt2img_height",
+    "txt2img/Distilled CFG Scale":       "#txt2img_distilled_cfg_scale",
+    "txt2img/Hires steps":               "#txt2img_hires_steps",
+    "txt2img/Hires CFG Scale":           "#txt2img_hr_cfg",
+    "txt2img/Hires Distilled CFG Scale": "#txt2img_hr_distilled_cfg",
+    "img2img/Width":                     "#img2img_width",
+    "img2img/Height":                    "#img2img_height",
+    "img2img/Distilled CFG Scale":       "#img2img_distilled_cfg_scale",
 }
