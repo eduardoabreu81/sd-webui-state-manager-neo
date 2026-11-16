@@ -216,4 +216,6 @@ Made with ❤️ for the Stable Diffusion community
 
 **[Report Bug](https://github.com/eduardoabreu81/sd-webui-state-manager-neo/issues)** • **[Request Feature](https://github.com/eduardoabreu81/sd-webui-state-manager-neo/issues)** • **[Discussions](https://github.com/eduardoabreu81/sd-webui-state-manager-neo/discussions)** • **[☕ Ko-fi](https://ko-fi.com/eduardoabreu81)**
 
+<sub>More Forge Neo extensions at <a href="https://eduardoabreu81.github.io/">eduardoabreu81.github.io</a></sub>
+
 </div>
